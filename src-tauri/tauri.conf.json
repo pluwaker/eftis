@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Eftis",
+  "version": "2.0.0",
+  "identifier": "com.eftis.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Eftis",
+        "width": 1380,
+        "height": 880,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "resizable": true,
+        "backgroundColor": "#0c0d0f"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [],
+    "publisher": "Eftis",
+    "copyright": "Eftis v2.0.0",
+    "externalBin": ["binaries/eftis-backend"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
+  }
+}

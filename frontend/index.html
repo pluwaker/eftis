@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <title>EFT Assistant — Tactical Raid Terminal</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230c0d0f' stroke='%23d99b26' stroke-width='2'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='monospace' font-weight='700' font-size='12' fill='%23eab349'%3EEFT%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="app-sidebar">
+      <div class="sidebar-head">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">EFT</div>
+          <div class="brand-copy">
+            <div class="brand-title">EFT Assistant</div>
+            <div class="brand-sub" data-i18n="brand_sub">READ-ONLY TERMINAL</div>
+          </div>
+        </div>
+
+        <div class="sidebar-switches">
+          <div class="mode-switch" id="modeSwitch" data-i18n-title="mode_switch_title" title="Переключатель режима PvP / PvE">
+            <span class="mode-indicator" id="modeIndicator" aria-hidden="true"></span>
+            <button class="mode-btn active" data-mode="regular">PvP</button>
+            <button class="mode-btn" data-mode="pve">PvE</button>
+          </div>
+
+          <div class="lang-switch" id="langSwitch" data-i18n-title="lang_switch_title" title="Язык интерфейса и базы данных (RU / EN)">
+            <button type="button" class="mode-btn active" data-lang="ru">RU</button>
+            <button type="button" class="mode-btn" data-lang="en">EN</button>
+          </div>
+        </div>
+      </div>
+
+      <nav class="nav-tabs" id="navTabs" data-i18n-aria="nav_aria" aria-label="Разделы">
+        <span class="tab-indicator" id="navTabIndicator" aria-hidden="true"></span>
+        <button class="tab-btn active" data-tab="quests">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span data-i18n="nav_quests">Квесты</span>
+        </button>
+        <button class="tab-btn" data-tab="quest-tree">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 6h6"/><path d="M6 9v6a3 3 0 0 0 3 3h6"/></svg>
+          <span data-i18n="nav_quest_tree">Дерево квестов</span>
+        </button>
+        <button class="tab-btn" data-tab="maps">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+          <span data-i18n="nav_maps">Карты</span>
+        </button>
+        <button class="tab-btn" data-tab="cultist">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polygon points="12 5 18 17 6 17"/></svg>
+          <span data-i18n="nav_cultist">Круг Сектантов</span>
+        </button>
+        <button class="tab-btn" data-tab="items">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span data-i18n="nav_items">Счётчик предметов</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="watcher-pill" id="watcherPill" data-i18n-title="watcher_title" title="Статус Read-Only наблюдения за логами">
+          <span class="pill-dot"></span>
+          <span id="watcherText" data-i18n="watcher_checking">Логи: проверка...</span>
+        </div>
+        <button type="button" class="theme-trigger-btn" id="btnThemeModal" data-i18n-title="theme_trigger_title" title="Изменить стиль оформления, шейдер и палитру">
+          <span class="theme-pair-dots" aria-hidden="true">
+            <span class="dot-base" id="dotThemeBase"></span>
+            <span class="dot-accent" id="dotThemeAccent"></span>
+          </span>
+          <span class="theme-trigger-label" data-i18n="theme_trigger">Стили и тема</span>
+          <span class="theme-trigger-hex num" id="themeTriggerHex">#d99b26</span>
+        </button>
+        <div class="sidebar-foot-actions">
+          <button class="btn btn-ghost full-btn" id="btnSync" data-i18n="btn_sync" data-i18n-title="btn_sync_title" title="Обновить цены и данные с tarkov.dev">Обновить API</button>
+          <button class="btn btn-ghost full-btn" id="btnSettings" data-i18n="btn_settings" data-i18n-title="btn_settings_title" title="Настройки путей и безопасности">Настройки</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <canvas id="asciiShaderBg" class="ascii-shader-bg" aria-hidden="true"></canvas>
+
+      <!-- TAB 1: QUESTS -->
+      <section class="tab-panel active" id="tab-quests">
+        <header class="view-header">
+          <div class="view-header-title">
+            <h1 data-i18n="quests_title">Квесты и прогресс</h1>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn-secondary" id="btnImportLogs" data-i18n="btn_import_logs">Импорт прошлых логов</button>
+          </div>
+        </header>
+
+        <div class="telemetry-strip" id="questKpis">
+          <div class="telemetry-cell"><div class="telemetry-label" data-i18n="kpi_done">Выполнено квестов</div><div class="shader-skel-box kpi"><canvas class="shader-skel-canvas" data-shader-skel="kpi"></canvas></div></div>
+          <div class="telemetry-cell"><div class="telemetry-label" data-i18n="kpi_active">Активные</div><div class="shader-skel-box kpi short"><canvas class="shader-skel-canvas" data-shader-skel="kpi"></canvas></div></div>
+          <div class="telemetry-cell"><div class="telemetry-label" data-i18n="kpi_available">Доступно</div><div class="shader-skel-box kpi short"><canvas class="shader-skel-canvas" data-shader-skel="kpi"></canvas></div></div>
+          <div class="telemetry-cell"><div class="telemetry-label" data-i18n="kpi_kappa">Путь к Kappa</div><div class="shader-skel-box kpi"><canvas class="shader-skel-canvas" data-shader-skel="kpi"></canvas></div></div>
+          <div class="telemetry-cell"><div class="telemetry-label" data-i18n="kpi_xp">Зафиксировано XP</div><div class="shader-skel-box kpi"><canvas class="shader-skel-canvas" data-shader-skel="kpi"></canvas></div></div>
+        </div>
+
+        <div class="brief-band">
+          <section class="brief-pane">
+            <div class="pane-head">
+              <h2 data-i18n="quests_velocity">Динамика по дням</h2>
+            </div>
+            <div id="questVelocityChart" class="chart-box">
+              <canvas class="shader-skel-canvas shader-skel-chart" data-shader-skel="chart"></canvas>
+            </div>
+          </section>
+
+          <section class="brief-pane">
+            <div class="pane-head">
+              <h2 data-i18n="quests_needs">Сводка потребностей</h2>
+              <div class="subtabs compact">
+                <button class="subtab-btn active" data-need="fir" data-i18n="need_fir">Предметы FIR</button>
+                <button class="subtab-btn" data-need="keys" data-i18n="need_keys">Ключи</button>
+                <button class="subtab-btn" data-need="history" data-i18n="need_history">События</button>
+              </div>
+            </div>
+            <div id="questNeedsBody" class="scroll-box">
+              <div class="shader-skel-inline">
+                <div class="shader-skel-box" style="width:180px;height:18px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div>
+                <div class="shader-skel-box" style="width:140px;height:14px;opacity:0.75;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="ledger-section">
+          <div class="ledger-toolbar">
+            <div class="toolbar">
+              <input type="search" id="questSearch" class="input quest-search-input" data-i18n-placeholder="quest_search_ph" placeholder="Поиск по названию, карте или торговцу..." />
+              <select id="questFilter" class="select">
+                <option value="playable" data-i18n="filter_playable">Активные и доступные</option>
+                <option value="active" data-i18n="filter_active">Только активные</option>
+                <option value="available" data-i18n="filter_available">Только доступные</option>
+                <option value="completed" data-i18n="filter_completed">Выполненные</option>
+                <option value="kappa" data-i18n="filter_kappa">Нужны для Kappa</option>
+                <option value="lightkeeper" data-i18n="filter_lightkeeper">Нужны для Смотрителя</option>
+                <option value="all" data-i18n="filter_all">Все квесты</option>
+              </select>
+            </div>
+            <span class="muted num" id="questTableCount"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="th_quest">Квест</th>
+                  <th data-i18n="th_trader">Торговец</th>
+                  <th data-i18n="th_map">Карта</th>
+                  <th data-i18n="th_lvl">Ур.</th>
+                  <th data-i18n="th_xp">XP</th>
+                  <th data-i18n="th_cond">Условия / Ключи</th>
+                  <th data-i18n="th_status">Статус</th>
+                </tr>
+              </thead>
+              <tbody id="questTableBody">
+                <tr>
+                  <td><div class="shader-skel-box" style="width:68%;height:18px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:74%;height:16px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:72%;height:16px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td class="num"><div class="shader-skel-box" style="width:28px;height:16px;margin-left:auto;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td class="num"><div class="shader-skel-box" style="width:58px;height:16px;margin-left:auto;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:52px;height:18px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:82px;height:22px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                </tr>
+                <tr>
+                  <td><div class="shader-skel-box" style="width:54%;height:18px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:62%;height:16px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:66%;height:16px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td class="num"><div class="shader-skel-box" style="width:24px;height:16px;margin-left:auto;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td class="num"><div class="shader-skel-box" style="width:52px;height:16px;margin-left:auto;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:44px;height:18px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:82px;height:22px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                </tr>
+                <tr>
+                  <td><div class="shader-skel-box" style="width:76%;height:18px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:68%;height:16px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:58%;height:16px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td class="num"><div class="shader-skel-box" style="width:28px;height:16px;margin-left:auto;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td class="num"><div class="shader-skel-box" style="width:62px;height:16px;margin-left:auto;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:48px;height:18px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                  <td><div class="shader-skel-box" style="width:82px;height:22px;"><canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- TAB 1B: QUEST TREE -->
+      <section class="tab-panel" id="tab-quest-tree">
+        <header class="view-header">
+          <div class="view-header-title">
+            <h1 data-i18n="tree_title">Дерево квестов</h1>
+          </div>
+          <div class="toolbar wrap">
+            <input id="treeSearch" class="input" type="search" data-i18n-placeholder="tree_search_ph" placeholder="Найти квест..." style="min-width:190px;" />
+            <select id="treeTraderFilter" class="select">
+              <option value="all" data-i18n="tree_all_traders">Все торговцы</option>
+            </select>
+            <select id="treeImportanceFilter" class="select">
+              <option value="all" data-i18n="tree_imp_all">Все ветки</option>
+              <option value="kappa" data-i18n="tree_imp_kappa">Ветка Kappa (Коллекционер)</option>
+              <option value="lightkeeper" data-i18n="tree_imp_lk">Ветка Смотрителя</option>
+              <option value="chains" data-i18n="tree_imp_chains">Сюжетные цепочки</option>
+            </select>
+            <select id="treeStatusFilter" class="select">
+              <option value="all" data-i18n="tree_st_all">Все статусы</option>
+              <option value="incomplete" data-i18n="tree_st_incomplete">Невыполненные</option>
+              <option value="playable" data-i18n="tree_st_playable">Активные и доступные</option>
+            </select>
+            <select id="treeColorMode" class="select" data-i18n-title="tree_color_title" title="Режим раскраски квестовых линий">
+              <option value="chains" data-i18n="tree_color_chains">Цвета: По квестовым веткам</option>
+              <option value="traders" data-i18n="tree_color_traders">Цвета: По торговцам</option>
+              <option value="status" data-i18n="tree_color_status">Цвета: По статусу</option>
+            </select>
+          </div>
+        </header>
+
+        <div class="tree-controls-bar">
+          <div class="toolbar wrap">
+            <label class="check-item"><input type="checkbox" id="treeChainOnly" /> <span data-i18n="tree_isolate">Изолировать цепочку выбранного</span></label>
+            <span class="muted num" id="treeStatsLabel"></span>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn-ghost" id="btnTreeFocusActive" data-i18n="tree_focus_active" data-i18n-title="tree_focus_active_title" title="Найти ближайший активный квест">К активным</button>
+            <button class="btn" id="btnTreeZoomOut" data-i18n-title="tree_zoom_out_title" title="Уменьшить">−</button>
+            <span class="badge num" id="treeZoomLabel">100%</span>
+            <button class="btn" id="btnTreeZoomIn" data-i18n-title="tree_zoom_in_title" title="Увеличить">+</button>
+            <button class="btn" id="btnTreeFit" data-i18n="tree_fit" data-i18n-title="tree_fit_title" title="Поместить всю ленту в экран">Вместить</button>
+          </div>
+        </div>
+
+        <div class="tree-legend-bar" id="treeLegendBar"></div>
+
+        <div id="treeSelectedBanner" class="inspector-box" style="margin-bottom:10px;display:none;"></div>
+
+        <div class="tree-viewport" id="questTreeViewport">
+          <canvas class="tree-canvas" id="questTreeCanvas" aria-hidden="true"></canvas>
+          <div class="tree-stage" id="questTreeStage"></div>
+        </div>
+      </section>
+
+      <!-- TAB 2: MAPS -->
+      <section class="tab-panel" id="tab-maps">
+        <div class="maps-layout">
+          <aside class="map-sidebar">
+            <div class="field">
+              <label for="mapSelect" data-i18n="map_location">Локация</label>
+              <select id="mapSelect" class="select full"></select>
+            </div>
+
+            <div class="subtabs">
+              <button class="subtab-btn active" data-maptab="layers" data-i18n="map_tab_layers">Слои и боссы</button>
+              <button class="subtab-btn" data-maptab="tasks"><span data-i18n="map_tab_tasks">Квесты карты</span> <span id="mapTasksTabBadge" class="badge amber" style="font-size:10px;padding:0 5px;margin-left:4px;display:none;">0</span></button>
+            </div>
+
+            <div id="mapSideLayers" class="stack-col map-side-panel" data-open="true" style="gap:14px;">
+              <div class="field">
+                <label data-i18n="map_markers">Маркеры</label>
+                <div class="check-list">
+                  <label class="check-item"><input type="checkbox" id="layerExtractsPmc" checked /> <span class="pin-dot-legend pmc" aria-hidden="true"></span> <span data-i18n="map_layer_pmc">Выходы ЧВК</span></label>
+                  <label class="check-item"><input type="checkbox" id="layerExtractsScav" checked /> <span class="pin-dot-legend scav" aria-hidden="true"></span> <span data-i18n="map_layer_scav">Выходы Дикие</span></label>
+                  <label class="check-item"><input type="checkbox" id="layerBosses" checked /> <span class="pin-dot-legend boss" aria-hidden="true"></span> <span data-i18n="map_layer_bosses">Боссы и шансы</span></label>
+                  <label class="check-item"><input type="checkbox" id="layerLocks" checked /> <span data-i18n="map_layer_locks">Закрытые двери и ключи</span></label>
+                  <label class="check-item"><input type="checkbox" id="layerQuests" checked /> <span data-i18n="map_layer_quests">Активные и доступные квесты</span></label>
+                  <label class="check-item"><input type="checkbox" id="layerCompletedQuests" /> <span data-i18n="map_layer_completed">Выполненные квесты</span></label>
+                  <label class="check-item"><input type="checkbox" id="layerAllQuests" /> <span data-i18n="map_layer_future">Будущие квесты</span></label>
+                  <label class="check-item"><input type="checkbox" id="layerPin" checked /> <span data-i18n="map_layer_pin">Моя позиция (скриншот)</span></label>
+                </div>
+              </div>
+
+              <div class="field" id="mapFloorsWrap" style="display:none;">
+                <label data-i18n="map_floors_label">Этажи карты</label>
+                <div id="mapFloors" class="floor-chips"></div>
+              </div>
+
+              <div class="field">
+                <label data-i18n="map_bosses_label">Боссы локации</label>
+                <div id="mapBossList" class="mini-list"></div>
+              </div>
+            </div>
+
+            <div id="mapSideTasks" class="stack-col map-side-panel" data-open="false" style="gap:8px;">
+              <div class="field" style="margin-bottom:0;">
+                <input type="search" id="mapTaskSearch" class="input full" data-i18n-placeholder="map_task_search_ph" placeholder="Поиск квеста на карте..." autocomplete="off" />
+              </div>
+
+              <div id="mapTaskStatusTabs" class="status-filter-row">
+                <button type="button" class="btn btn-ghost active map-status-tab" data-status="active"><span data-i18n="map_st_active">В рейде</span> (<span id="countStActive">0</span>)</button>
+                <button type="button" class="btn btn-ghost map-status-tab" data-status="completed"><span data-i18n="map_st_completed">Готово</span> (<span id="countStCompleted">0</span>)</button>
+                <button type="button" class="btn btn-ghost map-status-tab" data-status="locked"><span data-i18n="map_st_locked">Будущие</span> (<span id="countStLocked">0</span>)</button>
+                <button type="button" class="btn btn-ghost map-status-tab" data-status="all"><span data-i18n="map_st_all">Все</span> (<span id="countStAll">0</span>)</button>
+              </div>
+
+              <div id="mapTaskToolbar" class="map-task-toolbar">
+                <span id="mapTaskCount" class="muted num">Квестов: 0</span>
+                <div class="toolbar">
+                  <button type="button" class="btn btn-ghost" id="btnSelectAllTasks" data-i18n="map_show_all" style="padding:2px 6px; font-size:11px;">Показать все</button>
+                  <button type="button" class="btn btn-ghost" id="btnResetTaskFilter" data-i18n="map_reset_filter" style="padding:2px 6px; font-size:11px; display:none; color:var(--accent);">Сбросить</button>
+                </div>
+              </div>
+
+              <div id="mapActiveTasksList" class="mini-list map-tasks-scroll"></div>
+            </div>
+          </aside>
+
+          <div class="map-stage-wrap">
+            <div class="map-stage-bar">
+              <div class="map-stage-title-row">
+                <h2 id="mapTitle" data-i18n="map_title_default">Карта</h2>
+                <span id="mapRaidFilterBadge" class="badge amber" style="display:none;cursor:pointer;font-size:11px;" data-i18n-title="map_raid_badge_title" title="Нажмите, чтобы показать все квесты"></span>
+                <span class="muted" id="mapMeta" data-i18n="map_meta_hint">Колёсико — зум, драг — панорама, PrintScreen — позиция.</span>
+              </div>
+              <div class="toolbar">
+                <button class="btn btn-ghost" id="btnMapZoomIn">+</button>
+                <button class="btn btn-ghost" id="btnMapZoomOut">−</button>
+                <button class="btn btn-secondary" id="btnMapReset" data-i18n="map_btn_reset">Сброс</button>
+              </div>
+            </div>
+            <div class="map-viewport" id="mapViewport">
+              <div class="map-canvas" id="mapCanvas">
+                <div id="mapSvgHost"></div>
+                <div id="mapPinsHost"></div>
+              </div>
+              <div id="mapTooltip" class="map-tooltip" data-open="false" aria-hidden="true"></div>
+              <div id="mapPinPopover" class="map-popover" data-open="false" aria-hidden="true" role="dialog" data-i18n-aria="map_popover_aria" aria-label="Детали маркера"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: CULTIST CIRCLE -->
+      <section class="tab-panel" id="tab-cultist">
+        <header class="view-header">
+          <div class="view-header-title">
+            <h1 data-i18n="cultist_title">Круг Сектантов</h1>
+          </div>
+        </header>
+
+        <div class="split-2col">
+          <section class="panel-section">
+            <div class="pane-head">
+              <h2 data-i18n="cultist_solver_title">Подбор жертвы по Base Value</h2>
+            </div>
+            <div class="toolbar wrap" style="margin-bottom: 12px;">
+              <select id="cultistTarget" class="select">
+                <option value="400000" data-i18n="cultist_target_400">400 000+ ₽ (25% шанс 6ч квесты/Убежище)</option>
+                <option value="350001" data-i18n="cultist_target_350">350 001+ ₽ (14ч редкий пул)</option>
+              </select>
+              <select id="cultistSlots" class="select">
+                <option value="5" data-i18n="cultist_slots_5">До 5 слотов</option>
+                <option value="4" data-i18n="cultist_slots_4">До 4 слотов</option>
+                <option value="3" data-i18n="cultist_slots_3">До 3 слотов</option>
+                <option value="2" data-i18n="cultist_slots_2">До 2 слотов</option>
+                <option value="1" data-i18n="cultist_slots_1">1 слот</option>
+              </select>
+              <label class="check-item"><input type="checkbox" id="cultistTraders" checked /> <span data-i18n="cultist_traders">Учитывать торговцев</span></label>
+              <button class="btn btn-primary" id="btnSolveCultist" data-i18n="cultist_btn_solve">Подобрать</button>
+            </div>
+            <div id="cultistSolutions" class="solutions-list"></div>
+          </section>
+
+          <div class="stack-col" style="gap: 20px;">
+            <section class="panel-section">
+              <div class="pane-head">
+                <h2 data-i18n="cultist_timers_title">Таймеры ритуала</h2>
+                <div class="toolbar">
+                  <button class="btn btn-secondary" data-timer-hours="6">+ 6h</button>
+                  <button class="btn btn-secondary" data-timer-hours="14">+ 14h</button>
+                </div>
+              </div>
+              <div id="cultistTimers" class="mini-list"></div>
+            </section>
+
+            <section class="panel-section">
+              <div class="pane-head">
+                <h2 data-i18n="cultist_basket_title">Оценка своей корзины</h2>
+              </div>
+              <div class="autocomplete-wrap">
+                <input type="text" id="cultistItemSearch" class="input full" data-i18n-placeholder="cultist_search_ph" placeholder="Название предмета..." />
+                <div id="cultistItemDropdown" class="dropdown"></div>
+              </div>
+              <div id="cultistBasket" class="mini-list" style="margin-top: 10px;"></div>
+              <div id="cultistBasketResult" class="inspector-box" style="margin-top: 10px;"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: ITEM COUNTER -->
+      <section class="tab-panel" id="tab-items">
+        <header class="view-header">
+          <div class="view-header-title">
+            <h1 data-i18n="items_title">Счётчик предметов</h1>
+          </div>
+          <div class="toolbar wrap">
+            <button class="btn btn-secondary" id="btnImportQuestItems" data-i18n="items_btn_import" data-i18n-title="items_btn_import_title" title="Добавить нужные предметы из активных квестов">+ Из активных квестов</button>
+            <button class="btn btn-ghost" id="btnClearCompletedItems" data-i18n="items_btn_clear" data-i18n-title="items_btn_clear_title" title="Удалить все полностью собранные позиции">Очистить собранные</button>
+          </div>
+        </header>
+
+        <div class="telemetry-strip" id="itemCounterKpis"></div>
+
+        <section class="panel-section" style="margin-bottom: 16px;">
+          <div class="pane-head">
+            <h2 data-i18n="items_add_title">Добавить предмет в отслеживание</h2>
+            <div class="qty-preset-pills">
+              <span class="muted" style="font-size:11px;margin-right:4px;" data-i18n="items_goal_lbl">Цель:</span>
+              <button type="button" class="qty-pill" data-qty-preset="1">1</button>
+              <button type="button" class="qty-pill" data-qty-preset="2">2</button>
+              <button type="button" class="qty-pill" data-qty-preset="3">3</button>
+              <button type="button" class="qty-pill" data-qty-preset="5">5</button>
+              <button type="button" class="qty-pill" data-qty-preset="10">10</button>
+              <button type="button" class="qty-pill" data-qty-preset="15">15</button>
+            </div>
+          </div>
+
+          <div class="counter-add-grid">
+            <div class="field counter-add-name">
+              <label for="counterItemSearch" data-i18n="items_search_lbl">Предмет (поиск по базе EFT или свой текст)</label>
+              <div class="autocomplete-wrap">
+                <input type="text" id="counterItemSearch" class="input full" data-i18n-placeholder="items_search_ph" placeholder="Выберите предмет из базы EFT или введите своё название..." autocomplete="off" />
+                <div id="counterItemDropdown" class="dropdown"></div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="counterCurrentQty" data-i18n="items_cur_lbl">Уже есть</label>
+              <input type="number" id="counterCurrentQty" class="input num" value="0" min="0" step="1" />
+            </div>
+
+            <div class="field">
+              <label for="counterTargetQty" data-i18n="items_tgt_lbl">Нужно шт.</label>
+              <input type="number" id="counterTargetQty" class="input num" value="1" min="1" step="1" />
+            </div>
+
+            <div class="field">
+              <label for="counterCategoryTag" data-i18n="items_cat_lbl">Назначение</label>
+              <select id="counterCategoryTag" class="select full">
+                <option value="quest" data-i18n="items_cat_quest">Квесты</option>
+                <option value="hideout" data-i18n="items_cat_hideout">Убежище</option>
+                <option value="barter" data-i18n="items_cat_barter">Бартер / Крафт</option>
+                <option value="keys" data-i18n="items_cat_keys">Ключи / Кейсы</option>
+                <option value="general" selected data-i18n="items_cat_general">Общее</option>
+              </select>
+            </div>
+
+            <div class="field counter-add-note">
+              <label for="counterItemNote" data-i18n="items_note_lbl">Заметка</label>
+              <input type="text" id="counterItemNote" class="input full" data-i18n-placeholder="items_note_ph" placeholder="Кому сдать, локация, модуль..." />
+            </div>
+
+            <div class="counter-add-actions">
+              <label class="check-item"><input type="checkbox" id="counterFirOnly" /> <span data-i18n="items_fir_only">Только FIR (найдено в рейде)</span></label>
+              <button type="button" class="btn btn-primary" id="btnAddTrackedItem" data-i18n="items_btn_add">Добавить в счётчик</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="ledger-section">
+          <div class="filters-bar counter-filter-bar">
+            <input type="text" id="counterFilterInput" class="input" data-i18n-placeholder="items_filter_ph" placeholder="Фильтр по списку..." />
+            <select id="counterFilterCategory" class="select">
+              <option value="all" data-i18n="items_cat_all">Все категории</option>
+              <option value="quest" data-i18n="items_cat_quest">Квесты</option>
+              <option value="hideout" data-i18n="items_cat_hideout">Убежище</option>
+              <option value="barter" data-i18n="items_cat_barter">Бартер / Крафт</option>
+              <option value="keys" data-i18n="items_cat_keys">Ключи / Кейсы</option>
+              <option value="general" data-i18n="items_cat_general">Общее</option>
+            </select>
+            <div class="subtabs compact" id="counterStatusTabs">
+              <button type="button" class="subtab-btn active" data-counter-status="all" data-i18n="items_st_all">Все</button>
+              <button type="button" class="subtab-btn" data-counter-status="active" data-i18n="items_st_active">В процессе</button>
+              <button type="button" class="subtab-btn" data-counter-status="done" data-i18n="items_st_done">Собрано</button>
+            </div>
+            <span class="muted result-meta num" id="counterCountMeta">0</span>
+          </div>
+
+          <div id="itemCounterList" class="counter-cards-grid"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div class="modal-backdrop" id="settingsModal" data-open="false" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="modal panel-dialog">
+      <div class="modal-header">
+        <div>
+          <h3 id="settingsModalTitle" data-i18n="settings_title">Настройки путей, языка и логов</h3>
+          <p class="muted" data-i18n="settings_sub">Только чтение (Read-Only). Пустые поля включают автопоиск.</p>
+        </div>
+        <button class="btn btn-ghost" id="btnCloseSettings" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body stack-col" style="gap:12px; padding:16px 18px;">
+        <div class="field">
+          <label for="cfgLanguage" data-i18n="settings_lang_lbl">Язык приложения и гайдов</label>
+          <select id="cfgLanguage" class="select full">
+            <option value="ru">Русский (RU)</option>
+            <option value="en">English (EN)</option>
+          </select>
+        </div>
+        <label class="check-item"><input type="checkbox" id="cfgWatchLogs" /> <span data-i18n="settings_watch_logs">Читать локальные .log-файлы EFT</span></label>
+        <label class="check-item"><input type="checkbox" id="cfgWatchScreens" /> <span data-i18n="settings_watch_screens">Отслеживать координаты в именах файлов скриншотов</span></label>
+        <div class="field">
+          <label for="cfgLogsDir" data-i18n="settings_logs_dir">Папка Logs EFT</label>
+          <input type="text" id="cfgLogsDir" class="input full" placeholder="C:\Battlestate Games\EFT\Logs" />
+        </div>
+        <div class="field">
+          <label for="cfgScreensDir" data-i18n="settings_screens_dir">Папка Screenshots EFT</label>
+          <input type="text" id="cfgScreensDir" class="input full" placeholder="C:\Users\...\Documents\Escape From Tarkov\Screenshots" />
+        </div>
+        <div class="toolbar" style="justify-content: flex-end;">
+          <button class="btn btn-secondary" id="btnCancelSettings" data-i18n="settings_cancel">Отмена</button>
+          <button class="btn btn-primary" id="btnSaveSettings" data-i18n="settings_save">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THEME & STYLE STUDIO MODAL -->
+  <div class="modal-backdrop" id="themeModal" data-open="false" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+    <div class="modal panel-dialog" style="width:min(580px, calc(100vw - 32px)); max-height:90vh; display:flex; flex-direction:column;">
+      <div class="modal-header">
+        <div>
+          <h3 id="themeModalTitle" data-i18n="theme_title">Стили и оформление интерфейса</h3>
+          <p class="muted" data-i18n="theme_sub">Архитектура интерфейса, режим шейдера, свечение и палитра цветов.</p>
+        </div>
+        <button type="button" class="btn btn-ghost" id="btnCloseThemeModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body stack-col" style="gap:14px; padding:16px 18px; overflow-y:auto;">
+        <div class="field">
+          <label data-i18n="theme_style_lbl">Визуальный стиль интерфейса</label>
+          <div class="style-options-grid" id="themeStyleGrid"></div>
+        </div>
+
+        <div class="field">
+          <label data-i18n="theme_shader_lbl">Режим фонового шейдера</label>
+          <div class="style-options-grid" id="themeShaderGrid"></div>
+        </div>
+
+        <div class="field">
+          <label data-i18n="theme_glow_lbl">Свечение и акцентный контур</label>
+          <div class="style-options-grid cols-3" id="themeGlowGrid"></div>
+        </div>
+
+        <div class="field">
+          <label data-i18n="theme_presets_lbl">Готовые цветовые профили (12 тем)</label>
+          <div class="theme-presets-grid" id="themePresetsGrid"></div>
+        </div>
+
+        <div class="theme-pickers-grid">
+          <div class="field">
+            <label for="themeBasePicker" data-i18n="theme_base_lbl">Основной цвет (фон)</label>
+            <div class="theme-color-control">
+              <input type="color" id="themeBasePicker" class="theme-color-swatch" value="#0c0d0f" />
+              <input type="text" id="themeBaseHex" class="input num theme-hex-input" value="#0c0d0f" maxlength="7" spellcheck="false" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="themeAccentPicker" data-i18n="theme_accent_lbl">Акцентный цвет</label>
+            <div class="theme-color-control">
+              <input type="color" id="themeAccentPicker" class="theme-color-swatch" value="#d99b26" />
+              <input type="text" id="themeAccentHex" class="input num theme-hex-input" value="#d99b26" maxlength="7" spellcheck="false" />
+            </div>
+          </div>
+        </div>
+
+        <div class="theme-contrast-row" id="themeContrastInfo">
+          <span><span data-i18n="theme_contrast_text">Контраст текста:</span> <b class="num" id="themeContrastTextVal">—</b></span>
+          <span><span data-i18n="theme_contrast_accent">Контраст кнопок:</span> <b class="num" id="themeContrastAccentVal">—</b></span>
+        </div>
+
+        <div class="toolbar" style="justify-content: space-between; margin-top: 2px;">
+          <button type="button" class="btn btn-ghost" id="btnResetTheme" data-i18n="theme_reset">Сбросить</button>
+          <button type="button" class="btn btn-primary" id="btnDoneTheme" data-i18n="theme_done">Готово</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOATING GUIDE PRELOADER HUD -->
+  <div id="guideLoaderHud" class="guide-loader-hud" data-open="false" aria-hidden="true" role="status" aria-live="polite">
+    <div class="guide-loader-head">
+      <span class="glyph-spinner glyph-anim" data-glyph-spinner="true">⠋</span>
+      <span id="guideLoaderTitle" class="guide-loader-title" data-i18n="guide_hud_title">TARKOV.HELP • ЗАГРУЗКА ГАЙДА</span>
+      <button type="button" class="btn btn-ghost" id="btnCancelGuideLoad" aria-label="Cancel" style="padding:1px 6px;font-size:12px;">✕</button>
+    </div>
+    <div class="shader-skel-box" style="width:100%;height:18px;">
+      <canvas class="shader-skel-canvas" data-shader-skel="bar"></canvas>
+    </div>
+  </div>
+
+  <!-- MODAL: QUEST TACTICAL BRIEFING & GUIDE -->
+  <div id="questGuideModal" class="modal-backdrop" data-open="false" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="guideModalTitle">
+    <div class="modal-dialog guide-modal">
+      <div class="modal-header guide-hero-head">
+        <div class="guide-hero-left">
+          <div id="guideHeroThumbWrap" class="guide-hero-thumb" style="display:none;">
+            <img id="guideHeroThumb" src="" alt="" referrerpolicy="no-referrer" />
+          </div>
+          <div style="min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+              <span class="badge amber" data-i18n="guide_badge_briefing">БРИФИНГ</span>
+              <span id="guideModalBadges" style="display:inline-flex;gap:5px;flex-wrap:wrap;"></span>
+            </div>
+            <h3 id="guideModalTitle" style="margin:0;font-size:16px;line-height:1.2;">Quest</h3>
+            <p id="guideModalMeta" class="muted" style="margin-top:3px;font-size:11.5px;">Trader</p>
+          </div>
+        </div>
+        <div class="guide-hero-actions">
+          <button type="button" class="btn btn-ghost" id="btnRefreshGuide" data-i18n="guide_btn_refresh" data-i18n-title="guide_btn_refresh_title" title="Повторно загрузить текст и скриншоты с Tarkov.Help">↻ Обновить</button>
+          <button type="button" class="btn btn-ghost" id="btnCloseGuideModal" aria-label="Close" style="font-size:16px;line-height:1;padding:4px 8px;">✕</button>
+        </div>
+      </div>
+      <div class="modal-body guide-modal-body" id="guideModalBody"></div>
+      <div class="modal-footer guide-modal-footer">
+        <a id="guideModalWikiLink" href="#" target="_blank" rel="noopener" class="btn btn-ghost" style="font-size:12px;" data-i18n="guide_btn_open_help">Открыть на Tarkov.Help ↗</a>
+        <div style="display:flex;gap:8px;align-items:center;" id="guideFooterActions">
+          <button type="button" class="btn btn-secondary" id="btnCloseGuideModalBottom" data-i18n="guide_btn_close">Закрыть</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIGHTBOX FOR FULLSCREEN SCREENSHOTS -->
+  <div id="screenshotLightbox" class="lightbox-backdrop" data-open="false" aria-hidden="true" role="dialog" aria-modal="true">
+    <img id="lightboxImg" src="" alt="Quest screenshot" />
+    <div class="lightbox-caption" id="lightboxCaption" data-i18n="lightbox_caption">Кликните в любое место, чтобы закрыть</div>
+  </div>
+
+  <!-- ENGINE BOOT & PRERENDER OVERLAY -->
+  <div id="engineBootOverlay" class="engine-boot-overlay" data-open="true" aria-hidden="false" role="status" aria-live="polite">
+    <div class="engine-boot-card">
+      <div class="engine-boot-head">
+        <div class="engine-boot-brand">
+          <span class="brand-mark" aria-hidden="true">EFT</span>
+          <div>
+            <div class="engine-boot-title">EFT ASSISTANT // ENGINE BOOT</div>
+            <div class="engine-boot-sub">PRERENDER &amp; DAG INDEXING</div>
+          </div>
+        </div>
+        <span class="badge amber num" id="bootPct">0%</span>
+      </div>
+      <canvas class="shader-panel-canvas shader-skel-canvas" data-shader-skel="radar"></canvas>
+      <div class="engine-boot-bar">
+        <div class="engine-boot-fill" id="bootProgressFill" style="width: 6%"></div>
+      </div>
+      <div class="engine-boot-status">
+        <span class="glyph-spinner glyph-anim" data-glyph-spinner="true">⠋</span>
+        <span id="bootStatusText" data-i18n="boot_init">Инициализация движка...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/i18n.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

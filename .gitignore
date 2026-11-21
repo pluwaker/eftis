@@ -1,0 +1,41 @@
+# User configuration & local database
+config.json
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime logs & PID
+eft_assistant.log
+eft_assistant.pid
+*.log
+*.pid
+
+# Downloaded API/SVG/media/guide caches (keep wiki quest relations)
+cache/*
+!cache/wiki_quest_relations.json
+
+# Python bytecode & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node / Vite / Tauri / PyInstaller build artifacts
+node_modules/
+dist/
+dist-installer/
+build/
+release/
+src-tauri/target/
+src-tauri/binaries/*.exe
+installer/src-tauri/target/
+installer/src-tauri/payload.zip
+

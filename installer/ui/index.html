@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eftis Setup</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="asciiBg" aria-hidden="true"></canvas>
+
+  <div class="shell">
+    <!-- Custom Draggable Titlebar -->
+    <header class="titlebar" data-tauri-drag-region>
+      <div class="tb-left" data-tauri-drag-region>
+        <img src="logo.png" alt="" class="tb-logo" data-tauri-drag-region />
+        <span class="tb-brand" data-tauri-drag-region>EFTIS</span>
+        <span class="tb-sep" data-tauri-drag-region>//</span>
+        <span class="tb-tag" id="tbTag" data-tauri-drag-region>SETUP v2.0.0</span>
+      </div>
+      <div class="tb-actions">
+        <button type="button" class="tb-lang" id="btnLang" title="RU / EN">RU</button>
+        <button type="button" class="tb-win" id="btnMin" aria-label="Minimize">─</button>
+        <button type="button" class="tb-win tb-close" id="btnClose" aria-label="Close">✕</button>
+      </div>
+    </header>
+
+    <div class="body-grid">
+      <!-- Left Tactical Brand Rail -->
+      <aside class="brand-rail">
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          <span id="statusBadgeText">STATUS: READY</span>
+        </div>
+
+        <div class="emblem-wrap">
+          <span class="reticle tl"></span>
+          <span class="reticle tr"></span>
+          <span class="reticle bl"></span>
+          <span class="reticle br"></span>
+          <img src="logo.png" alt="Eftis" class="emblem-img" />
+        </div>
+
+        <div class="rail-title">EFTIS</div>
+        <div class="rail-divider"></div>
+
+        <nav class="step-list" aria-label="Setup steps">
+          <div class="step-item active" data-step="1">
+            <span class="step-num">01</span>
+            <span class="step-label" id="stepLbl1">Параметры</span>
+          </div>
+          <div class="step-item" data-step="2">
+            <span class="step-num">02</span>
+            <span class="step-label" id="stepLbl2">Установка</span>
+          </div>
+          <div class="step-item" data-step="3">
+            <span class="step-num">03</span>
+            <span class="step-label" id="stepLbl3">Готово</span>
+          </div>
+        </nav>
+
+        <div class="rail-footer">100% READ-ONLY // ZERO-TOUCH</div>
+      </aside>
+
+      <!-- Right Main Stage -->
+      <main class="main-panel">
+        <div id="errorBanner" class="error-banner" hidden></div>
+
+        <!-- View 1: Install / Update Setup -->
+        <section id="view-setup" class="view active">
+          <div class="view-head">
+            <h1 id="setupHeading">Установка Eftis</h1>
+            <p id="setupDesc" class="muted">
+              Локальный тактический помощник для Escape from Tarkov: квесты, Kappa, карты, гайды и Круг Сектантов.
+            </p>
+          </div>
+
+          <div class="field-group">
+            <label for="installDirInput" id="lblInstallDir" class="field-label">Папка установки</label>
+            <div class="path-row">
+              <input id="installDirInput" type="text" class="input" spellcheck="false" />
+              <button type="button" id="btnBrowse" class="btn btn-ghost">Обзор...</button>
+            </div>
+          </div>
+
+          <div class="checks-box">
+            <label class="chk-row">
+              <input type="checkbox" id="chkDesktop" checked />
+              <span class="chk-box"></span>
+              <span id="lblChkDesktop">Создать ярлык на рабочем столе</span>
+            </label>
+            <label class="chk-row">
+              <input type="checkbox" id="chkStartMenu" checked />
+              <span class="chk-box"></span>
+              <span id="lblChkStartMenu">Добавить ярлык в меню «Пуск»</span>
+            </label>
+          </div>
+
+          <div class="spec-strip">
+            <span>Python 3.12 Sidecar</span>
+            <span>•</span>
+            <span>WebView2 Native</span>
+            <span>•</span>
+            <span id="specSpace">~55 МБ</span>
+          </div>
+
+          <div class="view-actions">
+            <button type="button" id="btnCancelSetup" class="btn btn-ghost">Отмена</button>
+            <button type="button" id="btnInstall" class="btn btn-primary">Установить Eftis</button>
+          </div>
+        </section>
+
+        <!-- View 2: Installing / Uninstalling Progress -->
+        <section id="view-installing" class="view">
+          <div class="view-head">
+            <h1 id="progHeading">Установка компонентов...</h1>
+            <p id="progSub" class="muted">Распаковка бинарных файлов и настройка окружения.</p>
+          </div>
+
+          <div class="prog-card">
+            <div class="prog-top">
+              <span id="progStepText" class="prog-step">Подготовка...</span>
+              <span id="progPctText" class="prog-pct">0%</span>
+            </div>
+            <div class="prog-track">
+              <div id="progFill" class="prog-fill"></div>
+            </div>
+          </div>
+
+          <pre id="progLog" class="log-box"></pre>
+        </section>
+
+        <!-- View 3: Complete -->
+        <section id="view-complete" class="view">
+          <div class="done-badge">✓</div>
+          <div class="view-head">
+            <h1 id="doneHeading">Eftis установлен</h1>
+            <p id="doneDesc" class="muted">
+              Приложение готово к работе. Все модули и база данных работают локально на вашем ПК.
+            </p>
+          </div>
+
+          <div class="done-path-card">
+            <span class="done-path-lbl" id="lblDonePath">Путь установки</span>
+            <code id="donePathValue" class="done-path-val"></code>
+          </div>
+
+          <div class="view-actions">
+            <button type="button" id="btnFinishClose" class="btn btn-ghost">Закрыть</button>
+            <button type="button" id="btnLaunch" class="btn btn-primary">Запустить Eftis</button>
+          </div>
+        </section>
+
+        <!-- View 4: Uninstall -->
+        <section id="view-uninstall" class="view">
+          <div class="view-head">
+            <h1 id="unHeading">Удаление Eftis</h1>
+            <p id="unDesc" class="muted">
+              Файлы программы, ярлыки и запись в списке установленных программ будут удалены.
+            </p>
+          </div>
+
+          <div class="done-path-card">
+            <span class="done-path-lbl" id="lblUnPath">Папка программы</span>
+            <code id="unPathValue" class="done-path-val"></code>
+          </div>
+
+          <div class="checks-box">
+            <label class="chk-row">
+              <input type="checkbox" id="chkRemoveData" />
+              <span class="chk-box"></span>
+              <span id="lblRemoveData">Удалить пользовательские данные, прогресс квестов и настройки</span>
+            </label>
+          </div>
+
+          <div class="view-actions">
+            <button type="button" id="btnCancelUn" class="btn btn-ghost">Отмена</button>
+            <button type="button" id="btnUninstall" class="btn btn-danger">Удалить Eftis</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="installer.js"></script>
+</body>
+</html>

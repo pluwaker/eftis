@@ -1,0 +1,12 @@
+{
+  "host": "127.0.0.1",
+  "port": 8745,
+  "default_game_mode": "regular",
+  "language": "ru",
+  "watch_logs": true,
+  "watch_screenshots": true,
+  "eft_logs_dir": "",
+  "eft_screenshots_dir": "",
+  "auto_open_browser": true,
+  "cache_ttl_minutes": 15
+}

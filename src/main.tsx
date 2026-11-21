@@ -1,0 +1,15 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+import { I18nProvider } from "./i18n/I18nContext";
+import "./styles/styles.css";
+
+const savedLang = localStorage.getItem("eft_assistant_lang") === "en" ? "en" : "ru";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <I18nProvider initialLang={savedLang}>
+      <App />
+    </I18nProvider>
+  </React.StrictMode>,
+);
