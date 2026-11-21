@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="banner.jpg" alt="Eftis" width="100%" />
-</p>
-
-<p align="center">
   <img src="icon.jpg" alt="Eftis Icon" width="76" />
 </p>
 
@@ -14,6 +10,9 @@
 </p>
 
 ---
+<p align="center">
+  <img src="banner.jpg" alt="Eftis" width="100%" />
+</p>
 
 ## Основные возможности
 
