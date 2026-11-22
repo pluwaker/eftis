@@ -43,7 +43,7 @@ export function getApiBaseSync(): string {
 export function mediaProxyUrl(rawUrl: string): string {
   const s = String(rawUrl || "").trim();
   if (!s) return "";
-  if (s.startsWith("https://minio.tarkov.help/")) {
+  if (s.startsWith("https://minio.tarkov.help/") || s.startsWith("https://assets.tarkov.dev/")) {
     return `${getApiBaseSync()}/api/media-proxy?url=${encodeURIComponent(s)}`;
   }
   return s;

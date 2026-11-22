@@ -43,6 +43,24 @@ MAP_SVG_ALIAS = {
     "ground-zero-21": "ground-zero",
 }
 
+# EFT 1.0 Main Storyline chapters & endings (not present in json.tarkov.dev)
+STORYLINE_QUESTS: list[dict[str, Any]] = [
+    {"id": "story-tour", "ru": "Тур", "en": "Tour", "slug_ru": "tur", "slug_en": "tour", "map_norm": "", "prereqs": []},
+    {"id": "story-falling-skies", "ru": "Небеса в огне", "en": "Falling Skies", "slug_ru": "nebesa-v-ogne", "slug_en": "falling-skies", "map_norm": "", "prereqs": ["story-tour"]},
+    {"id": "story-they-are-already-here", "ru": "Они уже здесь", "en": "They Are Already Here", "slug_ru": "oni-uje-zdes", "slug_en": "they-are-already-here", "map_norm": "", "prereqs": ["story-tour"]},
+    {"id": "story-batya", "ru": "Батя", "en": "Batya", "slug_ru": "batya", "slug_en": "batya", "map_norm": "", "prereqs": ["story-tour"]},
+    {"id": "story-accidental-witness", "ru": "Случайный свидетель", "en": "Accidental Witness", "slug_ru": "sluchainiy-svidetel", "slug_en": "accidental-witness", "map_norm": "", "prereqs": ["story-tour"]},
+    {"id": "story-blue-fire", "ru": "Синий огонь", "en": "Blue Fire", "slug_ru": "siniy-ogon", "slug_en": "blue-fire", "map_norm": "", "prereqs": ["story-tour"]},
+    {"id": "story-the-unheard", "ru": "Неизвестные", "en": "The Unheard", "slug_ru": "neizvestnye", "slug_en": "the-unheard", "map_norm": "", "prereqs": ["story-tour"]},
+    {"id": "story-labyrinth", "ru": "Лабиринт", "en": "The Labyrinth", "slug_ru": "labirint", "slug_en": "labyrinth", "map_norm": "the-labyrinth", "prereqs": ["story-tour"]},
+    {"id": "story-boreas", "ru": "Борей", "en": "Boreas", "slug_ru": "borey", "slug_en": "boreas", "map_norm": "icebreaker", "prereqs": ["story-tour"]},
+    {"id": "story-the-ticket", "ru": "Билет", "en": "The Ticket", "slug_ru": "bilet", "slug_en": "the-ticket", "map_norm": "", "prereqs": ["story-tour"]},
+    {"id": "story-ticket-kerman", "ru": 'Билет. Керман. "Спаситель"', "en": 'The Ticket. Kerman. "Savior"', "slug_ru": "bilet-kerman", "slug_en": "the-ticket-kerman", "map_norm": "", "prereqs": ["story-the-ticket"]},
+    {"id": "story-ticket-prapor", "ru": 'Билет. Прапор. "Падший"', "en": 'The Ticket. Prapor. "Fallen"', "slug_ru": "bilet-prapor", "slug_en": "the-ticket-prapor", "map_norm": "", "prereqs": ["story-the-ticket"]},
+    {"id": "story-ticket-lightkeeper", "ru": 'Билет. Смотритель Маяка. "Остаться в Таркове"', "en": 'The Ticket. Lightkeeper. "Stay in Tarkov"', "slug_ru": "bilet-smotritel-mayaka-ostatsya-v-tarkove", "slug_en": "the-ticket-lightkeeper-stay-in-tarkov", "map_norm": "", "prereqs": ["story-the-ticket"]},
+    {"id": "story-ticket-survivor", "ru": 'Билет. Прапор. Быстрая концовка. "Выживший"', "en": 'The Ticket. Prapor. Fast ending. "The Survivor"', "slug_ru": "bilet-prapor-bistro", "slug_en": "the-ticket-prapor-fast", "map_norm": "", "prereqs": ["story-the-ticket"]},
+]
+
 USD_ITEM_ID = "5696686a4bdc2da3298b456a"
 EUR_ITEM_ID = "569668774bdc2da2298b4568"
 RUB_ITEM_ID = "5449016a4bdc2d6f028b456f"
@@ -750,6 +768,177 @@ class TarkovDataStore:
         v = (max_rz - pz) / dz
         return (round(u, 5), round(v, 5))
 
+    @staticmethod
+    def _compute_satellite_meta(cfg: dict[str, Any]) -> dict[str, Any] | None:
+        tile_path = cfg.get("tilePath")
+        bounds = cfg.get("bounds")
+        tfm = cfg.get("transform")
+        if not tile_path or not bounds or len(bounds) != 2 or not tfm or len(tfm) != 4:
+            return None
+        rot = float(cfg.get("coordinateRotation") or 0.0)
+        ang = math.radians(rot)
+        cos_a = math.cos(ang)
+        sin_a = math.sin(ang)
+        sx, ox, sy, oy = float(tfm[0]), float(tfm[1]), float(tfm[2]), float(tfm[3])
+        ts = float(cfg.get("tileSize") or 256)
+        if ts <= 0:
+            return None
+
+        def to_z0(x: float, z: float) -> tuple[float, float]:
+            rx = x * cos_a - z * sin_a
+            rz = x * sin_a + z * cos_a
+            return ((sx * rx + ox) / ts, (sy * (-rz) + oy) / ts)
+
+        u0, v0 = to_z0(float(bounds[0][0]), float(bounds[0][1]))
+        u1, v1 = to_z0(float(bounds[1][0]), float(bounds[1][1]))
+        c_left, c_right = min(u0, u1), max(u0, u1)
+        c_top, c_bottom = min(v0, v1), max(v0, v1)
+        if c_right <= c_left or c_bottom <= c_top:
+            return None
+
+        return {
+            "tilePath": tile_path,
+            "tileSize": int(ts),
+            "minZoom": int(cfg.get("minZoom") or 1),
+            "maxZoom": int(cfg.get("maxZoom") or 4),
+            "crop": [round(c_left, 6), round(c_top, 6), round(c_right, 6), round(c_bottom, 6)],
+        }
+
+    @staticmethod
+    def _describe_extract(
+        ex: dict[str, Any],
+        name: str,
+        items: dict[str, Any],
+        is_en: bool,
+    ) -> tuple[str, str]:
+        low = (name or "").lower()
+        faction = str(ex.get("faction") or "shared").lower()
+        ti = ex.get("transferItem") or {}
+        ti_item = ti.get("item") if isinstance(ti, dict) else None
+        ti_count = int(ti.get("count") or 0) if isinstance(ti, dict) else 0
+
+        cost_txt = ""
+        item_txt = ""
+        if ti_item == RUB_ITEM_ID and ti_count > 0:
+            cost_txt = f"{ti_count:,}".replace(",", " ") + (" ₽" if not is_en else " RUB")
+        elif ti_item:
+            it_name = items.get(ti_item, {}).get("name") or ""
+            if it_name:
+                item_txt = f"{it_name} ×{ti_count}" if ti_count > 1 else it_name
+
+        # 1. Vehicle / Car
+        if any(k in low for k in ("а-выход", "автомобиль", "v-ex", "vehicle")):
+            tag = ("Автомобиль" if not is_en else "Vehicle") + (f" ({cost_txt})" if cost_txt else "")
+            desc = (
+                f"Платный выход на машине{f' (базовая цена {cost_txt}, зависит от репутации у Скупщика)' if cost_txt else ''}. Одноразовый, ожидание 60 сек."
+                if not is_en
+                else f"Paid car extract{f' (base cost {cost_txt}, scales with Scav karma)' if cost_txt else ''}. Single-use, 60s countdown."
+            )
+            return tag, desc
+
+        # 2. Green Signal Flare
+        if any(k in low for k in ("сигнал", "flare", "климова", "klimov", "миры", "mira", "лэп", "power line", "тропа к реке", "river")):
+            tag = "Зелёный флаер" if not is_en else "Green Flare"
+            desc = (
+                "Запустите зелёный сигнальный патрон (флаер) вверх внутри зоны сигнала перед выходом, иначе сработают снайперы."
+                if not is_en
+                else "Fire a green signal flare upward inside the signal area before extracting, or border snipers will shoot."
+            )
+            return tag, desc
+
+        # 3. Armored Train
+        if any(k in low for k in ("бронепоезд", "armored train")):
+            tag = "Бронепоезд" if not is_en else "Armored Train"
+            desc = (
+                "Прибывает во второй половине рейда. Зайдите внутрь вагона после первого гудка и дождитесь отправления после второго."
+                if not is_en
+                else "Arrives later in the raid. Board before the second horn blows to extract with the train."
+            )
+            return tag, desc
+
+        # 4. No Backpack
+        if any(k in low for k in ("дыра в заборе", "hole in the fence", "люк", "sewer", "без рюкзака", "no backpack")):
+            tag = "Без рюкзака" if not is_en else "No Backpack"
+            desc = (
+                "Выход доступен только без надетого рюкзака (разгрузочные жилеты разрешены)."
+                if not is_en
+                else "Requires having no backpack equipped (chest rigs are allowed)."
+            )
+            return tag, desc
+
+        # 5. Red Rebel + Paracord
+        if any(k in low for k in ("скала", "cliff", "горный тайник", "mountain stash")):
+            tag = "Ледоруб + Паракорд" if not is_en else "Red Rebel + Paracord"
+            desc = (
+                "Требуются ледоруб Red Rebel и паракорд, а также отсутствие надетого бронежилета (бронеразгрузки разрешены)."
+                if not is_en
+                else "Requires a Red Rebel ice pick, Paracord, and no body armor equipped (armored rigs allowed)."
+            )
+            return tag, desc
+
+        # 6. Power / Switch (+ optional key)
+        if any(k in low for k in ("зб-013", "zb-013", "д-2", "d-2", "гермозатвор", "hermetic", "безопасная комната", "safe room", "лифт", "elevator", "ангар", "hangar", "парковка", "parking", "канализационный", "sewage")):
+            if "зб-013" in low or "zb-013" in low:
+                tag = "Питание + Ключ" if not is_en else "Power + Key"
+                desc = (
+                    "Включите рубильник питания в здании склада и откройте дверь ключом от выхода ЗБ-013."
+                    if not is_en
+                    else "Turn on the power switch in the warehouse and unlock the door with the ZB-013 key."
+                )
+            elif "безопасная комната" in low or "safe room" in low:
+                tag = "Питание + Карта #11SR" if not is_en else "Power + #11SR Keycard"
+                desc = (
+                    "Включите питание на ТЭЦ, проведите ключ-карту #11SR в туалете «Бургер-спота» и спуститесь на парковку."
+                    if not is_en
+                    else "Turn on power at Power Station, swipe #11SR keycard in Burger Spot, then head to the underground garage."
+                )
+            elif "гермозатвор" in low or "hermetic" in low:
+                tag = "Рубильник + Тревога" if not is_en else "Switch + Alarm"
+                desc = (
+                    "Нажмите рычаг питания у бункера — заиграет сирена, и выход будет открыт ограниченное время."
+                    if not is_en
+                    else "Pull the bunker hermetic door lever; an alarm sounds and the extract opens for a limited time."
+                )
+            else:
+                tag = "Питание / Рубильник" if not is_en else "Power / Switch"
+                desc = (
+                    "Необходимо предварительно включить питание или активировать соответствующий рубильник на локации."
+                    if not is_en
+                    else "Requires turning on power or activating the corresponding switch on the map."
+                )
+            return tag, desc
+
+        # 7. Co-op (PMC + Scav)
+        if (
+            any(k in low for k in ("совм.", "co-op", "coop", "лагерь диких", "scav camp", "подвал котельной", "дружба", "friendship", "перекресток с дикими"))
+            or (faction == "shared" and not any(k in low for k in ("лабиринт", "labyrinth", "подвал", "cellar", "база", "ворот")))
+        ):
+            tag = "Совместный (ЧВК + Дикий)" if not is_en else "Co-op (PMC + Scav)"
+            desc = (
+                "Для эвакуации в зоне выхода должны одновременно находиться живой ЧВК и Дикий."
+                if not is_en
+                else "Requires both a live PMC and a Player Scav in the extraction zone together."
+            )
+            return tag, desc
+
+        # 8. Key / Item transfer
+        if item_txt or any(k in low for k in ("зб-014", "zb-014", "подвал", "cellars", "ворота 0", "gate 0", "ворота 3", "медицинский", "тайный", "secret")):
+            tag = (f"Предмет: {item_txt}" if not is_en else f"Item: {item_txt}") if item_txt else ("Нужен ключ" if not is_en else "Key Required")
+            desc = (
+                f"Требуется специальный ключ или предмет ({item_txt})." if item_txt else "Дверь к выходу необходимо отпереть соответствующим ключом."
+                if not is_en
+                else (f"Requires a specific key or item ({item_txt})." if item_txt else "Requires unlocking the extract door with the matching key.")
+            )
+            return tag, desc
+
+        # 9. Standard
+        return (
+            "",
+            "Стандартный выход без особых условий (доступность зависит от точки спавна)."
+            if not is_en
+            else "Standard extract with no special requirements (availability depends on spawn).",
+        )
+
     def _build_normalized(
         self,
         mode: str,
@@ -878,12 +1067,16 @@ class TarkovDataStore:
             for ex in mp.get("extracts") or []:
                 pos = ex.get("position") or {}
                 uv = self._project_point(pos.get("x", 0), pos.get("z", 0), cfg) if pos else None
+                ex_name = self._tr(maps_ru, ex.get("name"), ex.get("name", ""))
+                req_tag, req_desc = self._describe_extract(ex, ex_name, items, is_en)
                 extracts.append(
                     {
                         "id": ex.get("id", ""),
-                        "name": self._tr(maps_ru, ex.get("name"), ex.get("name", "")),
+                        "name": ex_name,
                         "faction": ex.get("faction", "shared"),
-                        "switch": bool(ex.get("switch")),
+                        "switch": bool(req_tag and ("питание" in req_tag.lower() or "рубильник" in req_tag.lower() or "power" in req_tag.lower() or "switch" in req_tag.lower())),
+                        "requirement": req_tag,
+                        "description": req_desc,
                         "uv": uv,
                         "y": pos.get("y", 0),
                     }
@@ -1016,6 +1209,7 @@ class TarkovDataStore:
                 "floors": floors_public,
                 "bounds": cfg.get("bounds"),
                 "coordinateRotation": cfg.get("coordinateRotation", 0),
+                "satellite": self._compute_satellite_meta(cfg),
                 "extracts": extracts,
                 "locks": locks,
                 "bosses": bosses,
@@ -1418,6 +1612,38 @@ class TarkovDataStore:
                             child["prereqs"].append(tid)
                             child["taskRequirements"].append({"task": tid, "status": ["complete"]})
 
+        # Inject EFT 1.0 Main Storyline chapters & endings
+        story_trader = "Storyline" if is_en else "Сюжет"
+        for sq in STORYLINE_QUESTS:
+            sid = sq["id"]
+            if sid in tasks:
+                continue
+            s_slug = sq["slug_en"] if is_en else sq["slug_ru"]
+            s_map_id = maps_by_norm.get(sq["map_norm"], "") if sq["map_norm"] else ""
+            s_map_name = maps[s_map_id]["name"] if s_map_id and s_map_id in maps else any_map_lbl
+            s_prereqs = list(sq["prereqs"])
+            tasks[sid] = {
+                "id": sid,
+                "name": sq["en"] if is_en else sq["ru"],
+                "normalizedName": s_slug,
+                "traderId": "storyline",
+                "traderName": story_trader,
+                "mapId": s_map_id,
+                "mapName": s_map_name,
+                "minPlayerLevel": 1,
+                "experience": 0,
+                "kappaRequired": False,
+                "lightkeeperRequired": False,
+                "guideSlugs": {"ru": sq["slug_ru"], "en": sq["slug_en"]},
+                "wikiLink": f"{TARKOV_HELP_BASE}/{lang}/quest/{s_slug}",
+                "prereqs": s_prereqs,
+                "taskRequirements": [{"task": pid, "status": ["complete"]} for pid in s_prereqs],
+                "unlocks": [],
+                "chainDepth": 0,
+                "neededKeys": [],
+                "objectives": [],
+            }
+
         # Compute downstream unlocks, topological chainDepth, and clean flags
         for tid, tk in tasks.items():
             for pid in tk["prereqs"]:
@@ -1485,7 +1711,7 @@ class TarkovDataStore:
         # Ensure excluded categories are NEVER marked as Kappa
         for tid, tk in tasks.items():
             tr_lower = (tk.get("traderName") or "").lower()
-            if any(ex in tr_lower for ex in ["смотритель", "lightkeeper", "реф", "ref", "марафон", "бтр", "ивент"]):
+            if any(ex in tr_lower for ex in ["смотритель", "lightkeeper", "реф", "ref", "марафон", "бтр", "ивент", "сюжет", "storyline"]):
                 tk["kappaRequired"] = False
 
         # Transitive Lightkeeper ancestor marking
@@ -1793,7 +2019,11 @@ class TarkovDataStore:
         trader_name = task.get("traderName", "")
         tarkov_dev_url = task.get("wikiLink") or (f"https://tarkov.dev/task/{task_norm}" if task_norm else "https://tarkov.dev/tasks")
 
-        matched_lang, matched_slug = self._resolve_tarkov_help_slug(task_name, task_norm, norm_lang)
+        direct_slug = (task.get("guideSlugs") or {}).get(norm_lang)
+        if direct_slug:
+            matched_lang, matched_slug = norm_lang, direct_slug
+        else:
+            matched_lang, matched_slug = self._resolve_tarkov_help_slug(task_name, task_norm, norm_lang)
         html_content = ""
         used_lang = norm_lang
         resolved_url = tarkov_dev_url

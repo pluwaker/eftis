@@ -478,6 +478,61 @@ class TestPlannerAndSolver(unittest.TestCase):
             if no_svg in maps_by_norm:
                 self.assertFalse(maps_by_norm[no_svg]["hasSvg"])
 
+    def test_storyline_quests_chain_and_guides(self) -> None:
+        from pathlib import Path
+        from backend.tarkov_data import STORYLINE_QUESTS, TarkovDataStore
+
+        ds = TarkovDataStore(Path("cache"))
+        ru_tasks = ds.get_mode_data("regular", lang="ru")["tasks"]
+        en_tasks = ds.get_mode_data("regular", lang="en")["tasks"]
+
+        self.assertEqual(len(STORYLINE_QUESTS), 14)
+        for sq in STORYLINE_QUESTS:
+            sid = sq["id"]
+            self.assertIn(sid, ru_tasks)
+            self.assertIn(sid, en_tasks)
+            self.assertEqual(ru_tasks[sid]["traderName"], "Сюжет")
+            self.assertEqual(en_tasks[sid]["traderName"], "Storyline")
+            self.assertFalse(ru_tasks[sid]["kappaRequired"])
+
+        tour = ru_tasks["story-tour"]
+        self.assertEqual(tour["chainDepth"], 0)
+        self.assertIn("story-batya", tour["unlocks"])
+        self.assertIn("story-boreas", tour["unlocks"])
+        self.assertIn("story-the-ticket", tour["unlocks"])
+
+        ticket = ru_tasks["story-the-ticket"]
+        self.assertEqual(ticket["chainDepth"], 1)
+        for ending in ("story-ticket-kerman", "story-ticket-prapor", "story-ticket-lightkeeper", "story-ticket-survivor"):
+            self.assertIn(ending, ticket["unlocks"])
+            self.assertEqual(ru_tasks[ending]["chainDepth"], 2)
+
+        batya_guide = ds.get_task_guide("story-batya", "regular", lang="ru")
+        self.assertEqual(batya_guide["guideSource"], "tarkov.help")
+        self.assertTrue(batya_guide["guideUrl"].endswith("/ru/quest/batya"))
+
+    def test_satellite_meta_and_extract_descriptions(self) -> None:
+        from pathlib import Path
+        from backend.tarkov_data import TarkovDataStore
+
+        ds = TarkovDataStore(Path("cache"))
+        maps_by_norm = {m["normalizedName"]: m for m in ds.get_mode_data("regular", lang="ru")["maps"].values()}
+
+        for norm in ("customs", "woods", "ground-zero", "the-lab"):
+            sat = maps_by_norm[norm].get("satellite")
+            self.assertIsNotNone(sat)
+            self.assertIn("{z}/{x}/{y}", sat["tilePath"])
+            cL, cT, cR, cB = sat["crop"]
+            self.assertGreater(cR, cL)
+            self.assertGreater(cB, cT)
+
+        interchange_ex = {e["name"]: e for e in maps_by_norm["interchange"]["extracts"]}
+        self.assertIn("А-Выход у ТЭЦ", interchange_ex)
+        self.assertIn("Автомобиль", interchange_ex["А-Выход у ТЭЦ"]["requirement"])
+        self.assertIn("20 000", interchange_ex["А-Выход у ТЭЦ"]["requirement"])
+        self.assertIn("Тропа к реке (Сигнал)", interchange_ex)
+        self.assertEqual(interchange_ex["Тропа к реке (Сигнал)"]["requirement"], "Зелёный флаер")
+
 
 if __name__ == "__main__":
     unittest.main()

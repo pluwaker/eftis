@@ -84,6 +84,7 @@ export const MapsTab: React.FC<MapsTabProps> = ({ active }) => {
 
             <div id="mapTaskStatusTabs" className="status-filter-row">
               <button type="button" className="btn btn-ghost active map-status-tab" data-status="active">{t("map_st_active")} (<span id="countStActive">0</span>)</button>
+              <button type="button" className="btn btn-ghost map-status-tab" data-status="selected">{t("map_st_selected")} (<span id="countStSelected">0</span>)</button>
               <button type="button" className="btn btn-ghost map-status-tab" data-status="completed">{t("map_st_completed")} (<span id="countStCompleted">0</span>)</button>
               <button type="button" className="btn btn-ghost map-status-tab" data-status="locked">{t("map_st_locked")} (<span id="countStLocked">0</span>)</button>
               <button type="button" className="btn btn-ghost map-status-tab" data-status="all">{t("map_st_all")} (<span id="countStAll">0</span>)</button>
@@ -109,6 +110,10 @@ export const MapsTab: React.FC<MapsTabProps> = ({ active }) => {
               <span className="muted" id="mapMeta">{t("map_meta_hint")}</span>
             </div>
             <div className="toolbar">
+              <div className="map-style-switch" id="mapStyleSwitch" role="group">
+                <button type="button" className="btn btn-ghost active" data-mapstyle="svg">{t("map_style_svg")}</button>
+                <button type="button" className="btn btn-ghost" data-mapstyle="satellite">{t("map_style_sat")}</button>
+              </div>
               <button type="button" className="btn btn-ghost" id="btnMapZoomIn">+</button>
               <button type="button" className="btn btn-ghost" id="btnMapZoomOut">−</button>
               <button type="button" className="btn btn-secondary" id="btnMapReset">{t("map_btn_reset")}</button>

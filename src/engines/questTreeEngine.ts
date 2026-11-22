@@ -38,6 +38,7 @@ const getTreeStatusShort = (st) => {
 };
 
 const TRADER_ORDER = [
+  "Сюжет", "Storyline",
   "Прапор", "Prapor",
   "Терапевт", "Therapist",
   "Лыжник", "Skier",
@@ -55,6 +56,7 @@ const TRADER_ORDER = [
 ];
 
 const TRADER_COLORS = {
+  "Сюжет": "#f59e0b", "Storyline": "#f59e0b",
   "Прапор": "#fb923c", "Prapor": "#fb923c",
   "Терапевт": "#2dd4bf", "Therapist": "#2dd4bf",
   "Лыжник": "#60a5fa", "Skier": "#60a5fa",

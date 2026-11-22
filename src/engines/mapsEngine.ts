@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { escHtml, fmtNum as fmtNumBase, fmtRub as fmtRubBase, GUIDE_BOOK_SVG } from "../utils/format";
+import { getApiBaseSync } from "../api/client";
 
 export interface EngineDeps {
   state: any;
@@ -67,6 +68,125 @@ document.querySelectorAll("#mapTaskStatusTabs .map-status-tab").forEach((btn) =>
     applyMapTaskFilter();
   });
 });
+
+try {
+  state.mapVisualStyle = localStorage.getItem("eft_map_visual_style") === "satellite" ? "satellite" : "svg";
+} catch {
+  state.mapVisualStyle = "svg";
+}
+
+function updateMapStyleButtons() {
+  const satAvailable = Boolean(state.currentMapData?.map?.satellite);
+  document.querySelectorAll("#mapStyleSwitch [data-mapstyle]").forEach((btn) => {
+    const mode = btn.dataset.mapstyle;
+    if (mode === "satellite") {
+      btn.disabled = !satAvailable;
+      btn.title = satAvailable ? "" : t("map_sat_unavailable");
+    }
+    const effectiveMode = (state.mapVisualStyle === "satellite" && satAvailable) ? "satellite" : "svg";
+    btn.classList.toggle("active", mode === effectiveMode);
+  });
+}
+
+document.querySelectorAll("#mapStyleSwitch [data-mapstyle]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const mode = btn.dataset.mapstyle === "satellite" ? "satellite" : "svg";
+    if (mode === "satellite" && !state.currentMapData?.map?.satellite) {
+      showToast(t("map_sat_unavailable"));
+      return;
+    }
+    state.mapVisualStyle = mode;
+    try { localStorage.setItem("eft_map_visual_style", mode); } catch {}
+    updateMapStyleButtons();
+    applyMapVisualStyle();
+  });
+});
+
+let satRenderToken = 0;
+
+function renderSatelliteTiles(canvas, sat, token) {
+  if (!canvas || !sat || !sat.tilePath || !sat.crop) return;
+  const [cL, cT, cR, cB] = sat.crop;
+  const cropW = cR - cL;
+  const cropH = cB - cT;
+  if (cropW <= 0 || cropH <= 0) return;
+
+  const targetW = 1600;
+  const targetH = Math.max(360, Math.round(targetW * (cropH / cropW)));
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#0c0d0f";
+  ctx.fillRect(0, 0, targetW, targetH);
+
+  const drawZoomPass = (z, onDone) => {
+    const n = 1 << z;
+    const xMin = Math.max(0, Math.floor(cL * n));
+    const xMax = Math.min(n - 1, Math.floor(cR * n));
+    const yMin = Math.max(0, Math.floor(cT * n));
+    const yMax = Math.min(n - 1, Math.floor(cB * n));
+    const total = Math.max(1, (xMax - xMin + 1) * (yMax - yMin + 1));
+    let done = 0;
+
+    for (let ty = yMin; ty <= yMax; ty++) {
+      for (let tx = xMin; tx <= xMax; tx++) {
+        const rawUrl = sat.tilePath
+          .replace("{z}", String(z))
+          .replace("{x}", String(tx))
+          .replace("{y}", String(ty));
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        let retriedDirect = false;
+        img.onload = () => {
+          if (token !== satRenderToken) return;
+          const dx = ((tx / n - cL) / cropW) * targetW;
+          const dy = ((ty / n - cT) / cropH) * targetH;
+          const dw = ((1 / n) / cropW) * targetW;
+          const dh = ((1 / n) / cropH) * targetH;
+          ctx.drawImage(img, dx, dy, dw + 0.6, dh + 0.6);
+          done++;
+          if (done >= total && onDone) onDone();
+        };
+        img.onerror = () => {
+          if (!retriedDirect) {
+            retriedDirect = true;
+            img.src = rawUrl;
+            return;
+          }
+          done++;
+          if (done >= total && onDone) onDone();
+        };
+        img.src = `${getApiBaseSync()}/api/media-proxy?url=${encodeURIComponent(rawUrl)}`;
+      }
+    }
+  };
+
+  const zLow = Math.max(sat.minZoom || 1, Math.min(2, sat.maxZoom || 4));
+  const zHigh = Math.max(zLow, Math.min(3, sat.maxZoom || 4));
+  drawZoomPass(zLow, () => {
+    if (token !== satRenderToken) return;
+    if (zHigh > zLow) drawZoomPass(zHigh, null);
+  });
+}
+
+function applyMapVisualStyle() {
+  const svgLayer = document.getElementById("mapSvgLayer");
+  const satCanvas = document.getElementById("mapSatCanvas");
+  const sat = state.currentMapData?.map?.satellite;
+  const useSat = state.mapVisualStyle === "satellite" && Boolean(sat);
+
+  if (svgLayer) svgLayer.style.display = useSat ? "none" : "block";
+  if (satCanvas) {
+    satCanvas.style.display = useSat ? "block" : "none";
+    if (useSat && satCanvas.dataset.renderedMap !== state.currentMapData?.map?.normalizedName) {
+      satCanvas.dataset.renderedMap = state.currentMapData?.map?.normalizedName || "";
+      satRenderToken += 1;
+      renderSatelliteTiles(satCanvas, sat, satRenderToken);
+    }
+  }
+  renderMapPins();
+}
 
 const mapSearchInput = document.getElementById("mapTaskSearch");
 if (mapSearchInput) {
@@ -174,7 +294,7 @@ window.setMapQuestStatus = async (taskId, status) => {
   showToast(t("toast_status_updated"));
 };
 
-window.toggleSelectMapTask = (taskId, exclusive = true) => {
+window.toggleSelectMapTask = (taskId, exclusive = false) => {
   if (exclusive) {
     if (state.selectedMapTaskIds.has(taskId) && state.selectedMapTaskIds.size === 1) {
       // Toggle off if already the sole selected quest
@@ -235,7 +355,13 @@ function syncMapTaskCardSelection() {
     const badge = card.querySelector(".map-selected-badge");
     if (badge) badge.style.display = isSelected ? "inline-flex" : "none";
   });
+  const elSel = document.getElementById("countStSelected");
+  if (elSel) elSel.textContent = String(state.selectedMapTaskIds.size);
   const total = cards.length;
+  if (state.mapTaskStatusFilter === "selected") {
+    applyMapTaskFilter();
+    return;
+  }
   const visible = Array.from(cards).filter((c) => c.style.display !== "none").length;
   updateMapTaskToolbar(total, visible);
 }
@@ -250,10 +376,13 @@ function applyMapTaskFilter() {
   cards.forEach((card) => {
     const text = card.dataset.search || "";
     const st = card.dataset.status || "available";
+    const tid = card.dataset.taskId;
 
     let statusMatches = true;
     if (statusFilter === "active") {
       statusMatches = (st === "active" || st === "available");
+    } else if (statusFilter === "selected") {
+      statusMatches = state.selectedMapTaskIds.has(tid);
     } else if (statusFilter === "completed") {
       statusMatches = (st === "completed");
     } else if (statusFilter === "locked") {
@@ -277,9 +406,13 @@ function applyMapTaskFilter() {
       host.appendChild(noMatchEl);
     }
     noMatchEl.style.display = "";
-    noMatchEl.innerHTML = state.lang === "en"
-      ? `No quests match «<b>${esc(query)}</b>».<br><button class="btn btn-ghost" style="margin-top:8px;font-size:11px;" onclick="clearMapTaskSearch()">Clear search</button>`
-      : `По запросу «<b>${esc(query)}</b>» квестов не найдено.<br><button class="btn btn-ghost" style="margin-top:8px;font-size:11px;" onclick="clearMapTaskSearch()">Очистить поиск</button>`;
+    if (statusFilter === "selected" && !query && state.selectedMapTaskIds.size === 0) {
+      noMatchEl.innerHTML = esc(t("map_selected_empty"));
+    } else {
+      noMatchEl.innerHTML = state.lang === "en"
+        ? `No quests match «<b>${esc(query)}</b>».<br><button class="btn btn-ghost" style="margin-top:8px;font-size:11px;" onclick="clearMapTaskSearch()">Clear search</button>`
+        : `По запросу «<b>${esc(query)}</b>» квестов не найдено.<br><button class="btn btn-ghost" style="margin-top:8px;font-size:11px;" onclick="clearMapTaskSearch()">Очистить поиск</button>`;
+    }
   } else if (noMatchEl) {
     noMatchEl.style.display = "none";
   }
@@ -398,18 +531,19 @@ async function loadMapView(norm, force = false) {
   // Active tasks & required items for this map
   renderMapActiveTasks(data.activeMapTasks || []);
 
-  // Render SVG
-  if (data.svg) {
-    svgHost.innerHTML = data.svg;
-    const svgEl = svgHost.querySelector("svg");
-    if (svgEl) {
-      svgEl.style.width = "1000px";
-      svgEl.style.height = "auto";
-      svgEl.style.display = "block";
-    }
-  } else {
-    svgHost.innerHTML = `<div style="width:1000px;height:620px;display:flex;align-items:center;justify-content:center;color:#71717a;">${esc(t("map_no_svg", { name: mp.name }))}</div>`;
+  // Render SVG + optional Satellite layer
+  const svgHtml = data.svg
+    ? data.svg
+    : `<div style="width:1000px;height:620px;display:flex;align-items:center;justify-content:center;color:#71717a;">${esc(t("map_no_svg", { name: mp.name }))}</div>`;
+  svgHost.innerHTML = `<div id="mapSvgLayer">${svgHtml}</div><canvas id="mapSatCanvas" class="map-sat-canvas" style="display:none;"></canvas>`;
+  const svgEl = svgHost.querySelector("svg");
+  if (svgEl) {
+    svgEl.style.width = "1000px";
+    svgEl.style.height = "auto";
+    svgEl.style.display = "block";
   }
+  updateMapStyleButtons();
+  applyMapVisualStyle();
 
   // Floors selector (multi-floor SVG groups & height tiers across all maps)
   state.activeMapFloor = "all";
@@ -441,6 +575,8 @@ function renderMapActiveTasks(tasks) {
 
   const elAct = document.getElementById("countStActive");
   if (elAct) elAct.textContent = countActive;
+  const elSel = document.getElementById("countStSelected");
+  if (elSel) elSel.textContent = String(state.selectedMapTaskIds.size);
   const elComp = document.getElementById("countStCompleted");
   if (elComp) elComp.textContent = countComp;
   const elLoc = document.getElementById("countStLocked");
@@ -501,7 +637,7 @@ function renderMapActiveTasks(tasks) {
     ].filter(Boolean).join(" ");
 
     return `
-      <div class="${cardCls}" data-task-id="${esc(t.taskId)}" data-status="${esc(t.status)}" data-search="${esc(searchStr)}" onclick="toggleSelectMapTask('${esc(t.taskId)}', true)">
+      <div class="${cardCls}" data-task-id="${esc(t.taskId)}" data-status="${esc(t.status)}" data-search="${esc(searchStr)}" onclick="toggleSelectMapTask('${esc(t.taskId)}', false)">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
             <input type="checkbox" class="map-task-checkbox" data-task-id="${esc(t.taskId)}" ${isSelected ? "checked" : ""} title="${esc(window.t("map_multiselect_title"))}" onclick="event.stopPropagation(); toggleSelectMapTask('${esc(t.taskId)}', false);" />
@@ -530,7 +666,7 @@ function renderMapActiveTasks(tasks) {
 
 window.focusMapPoint = (taskId, u, v, ptIdx) => {
   state.focusedMapTaskId = taskId;
-  state.selectedMapTaskIds = new Set([taskId]);
+  state.selectedMapTaskIds.add(taskId);
   const qChk = document.getElementById("layerQuests");
   if (qChk && !qChk.checked) qChk.checked = true;
   syncMapTaskCardSelection();
@@ -590,7 +726,7 @@ window.setActiveMapFloor = function setActiveMapFloor(floorId) {
     }
   }
 
-  document.querySelectorAll("#mapPinsHost .map-pin.pin-lock").forEach((pinEl) => {
+  document.querySelectorAll("#mapPinsHost .map-pin.pin-lock, #mapPinsHost .map-pin-anchor.pin-lock, #mapPinsHost .map-leader.pin-lock").forEach((pinEl) => {
     const pinFloor = pinEl.dataset.floorId || "";
     const dim = nextFloor !== "all" && pinFloor && pinFloor !== nextFloor;
     pinEl.classList.toggle("is-dimmed-floor", dim);
@@ -603,9 +739,205 @@ document.getElementById("mapFloors").addEventListener("click", (e) => {
   setActiveMapFloor(btn.dataset.floor);
 });
 
+function getPinAccentColor(cls) {
+  if (!cls) return "#cbd5e1";
+  if (cls.includes("pin-quest-done")) return "#6b7280";
+  if (cls.includes("pin-quest-future")) return "#94a3b8";
+  if (cls.includes("pin-quest")) return "#a855f7";
+  if (cls.includes("pin-extract-scav")) return "#0ea5e9";
+  if (cls.includes("pin-extract-shared")) return "#14b8a6";
+  if (cls.includes("pin-extract")) return "#22c55e";
+  if (cls.includes("pin-boss")) return "#ef4444";
+  if (cls.includes("pin-lock")) return "#ec4899";
+  if (cls.includes("pin-player")) return "#f59e0b";
+  return "#cbd5e1";
+}
+
+function getPinPriority(p) {
+  const cls = p.cls || "";
+  if (cls.includes("pin-player")) return 100;
+  if (cls.includes("pin-quest-cluster") || cls === "pin-quest") return 90;
+  if (cls.includes("pin-boss")) return 80;
+  if (cls.includes("pin-extract")) return 70;
+  if (cls.includes("pin-quest-future") || cls.includes("pin-quest-done")) return 55;
+  if (cls.includes("pin-lock")) return 40;
+  return 50;
+}
+
+function stripPinHtml(html) {
+  return String(html || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+function layoutCalloutPins(pins, mapW, mapH) {
+  const placedLabels = [];
+  const anchorDots = [];
+  const items = pins.map((p, idx) => {
+    const ax = (p.left / 100) * mapW;
+    const ay = (p.top / 100) * mapH;
+    const isPlayer = (p.cls || "").includes("pin-player");
+    const text = stripPinHtml(p.label);
+    const boxW = Math.min(220, Math.max(46, Math.round(text.length * 5.6 + 16)));
+    const boxH = 19;
+    if (!isPlayer) {
+      anchorDots.push({ idx, x1: ax - 5, y1: ay - 5, x2: ax + 5, y2: ay + 5 });
+    }
+    return { p, idx, ax, ay, boxW, boxH, isPlayer, prio: getPinPriority(p) };
+  });
+
+  const order = items
+    .filter((it) => !it.isPlayer)
+    .sort((a, b) => (b.prio - a.prio) || (a.ay - b.ay) || (a.ax - b.ax));
+
+  const rectsOverlap = (a, b, pad = 3) =>
+    !(a.x2 + pad <= b.x1 || a.x1 >= b.x2 + pad || a.y2 + pad <= b.y1 || a.y1 >= b.y2 + pad);
+
+  const overlapArea = (a, b) => {
+    const ox = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1));
+    const oy = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+    return ox * oy;
+  };
+
+  const cellCounts = new Map();
+
+  order.forEach((it) => {
+    const { p, idx, ax, ay, boxW, boxH } = it;
+    const cellKey = `${Math.round(ax / 28)}:${Math.round(ay / 28)}`;
+    const cellIdx = cellCounts.get(cellKey) || 0;
+    cellCounts.set(cellKey, cellIdx + 1);
+
+    let preferRight = ax < mapW * 0.78;
+    if (ax > 160 && ax < mapW - 160) {
+      preferRight = cellIdx % 2 === 0;
+    }
+
+    const candidates = [];
+    for (let ring = 0; ring <= 6; ring++) {
+      const dxBase = 16 + ring * 12;
+      const yOffsets = ring === 0 ? [0] : [-ring * 22, ring * 22];
+      const sides = preferRight ? [1, -1] : [-1, 1];
+      for (const dy of yOffsets) {
+        for (const side of sides) {
+          if (ring === 0 && side === -1 && ax < boxW + 22) continue;
+          if (ring === 0 && side === 1 && ax + boxW + 22 > mapW) continue;
+          const rawLeft = side === 1 ? ax + dxBase : ax - dxBase - boxW;
+          const boxLeft = Math.max(4, Math.min(mapW - boxW - 4, rawLeft));
+          const boxCenterY = Math.max(boxH / 2 + 4, Math.min(mapH - boxH / 2 - 4, ay + dy));
+          const rect = {
+            x1: boxLeft,
+            y1: boxCenterY - boxH / 2,
+            x2: boxLeft + boxW,
+            y2: boxCenterY + boxH / 2,
+          };
+          candidates.push({ boxLeft, boxCenterY, rect, side });
+        }
+      }
+    }
+
+    let chosen = null;
+    let fallbackNoLabelHit = null;
+    let bestOverlap = Infinity;
+    let bestCandidate = candidates[0];
+
+    for (const c of candidates) {
+      const hitsLabel = placedLabels.some((r) => rectsOverlap(c.rect, r, 3));
+      if (!hitsLabel) {
+        const hitsDot = anchorDots.some((d) => d.idx !== idx && rectsOverlap(c.rect, d, 2));
+        if (!hitsDot) {
+          chosen = c;
+          break;
+        }
+        if (!fallbackNoLabelHit) fallbackNoLabelHit = c;
+      } else {
+        let area = 0;
+        for (const r of placedLabels) area += overlapArea(c.rect, r);
+        if (area < bestOverlap) {
+          bestOverlap = area;
+          bestCandidate = c;
+        }
+      }
+    }
+
+    const pick = chosen || fallbackNoLabelHit || bestCandidate;
+    placedLabels.push(pick.rect);
+
+    const boxCenterX = pick.boxLeft + boxW / 2;
+    const isRight = boxCenterX >= ax;
+    const lx = isRight ? pick.boxLeft : pick.boxLeft + boxW;
+    const ly = pick.boxCenterY;
+
+    let pointsStr;
+    let leaderLen;
+    if (Math.abs(ly - ay) <= 2 || Math.abs(lx - ax) <= 6) {
+      pointsStr = `${ax.toFixed(1)},${ay.toFixed(1)} ${lx.toFixed(1)},${ly.toFixed(1)}`;
+      leaderLen = Math.ceil(Math.hypot(lx - ax, ly - ay)) + 2;
+    } else {
+      const horizDist = Math.abs(lx - ax);
+      const step = Math.min(horizDist * 0.55, Math.max(8, Math.abs(ly - ay)));
+      const ex = isRight ? Math.max(ax, lx - step) : Math.min(ax, lx + step);
+      pointsStr = `${ax.toFixed(1)},${ay.toFixed(1)} ${ex.toFixed(1)},${ly.toFixed(1)} ${lx.toFixed(1)},${ly.toFixed(1)}`;
+      leaderLen = Math.ceil(Math.hypot(ex - ax, ly - ay) + Math.abs(lx - ex)) + 2;
+    }
+
+    p._callout = {
+      ax,
+      ay,
+      isRight,
+      leaderLen,
+      boxLeftPct: (pick.boxLeft / mapW) * 100,
+      boxTopPct: (pick.boxCenterY / mapH) * 100,
+      pointsStr,
+      accent: getPinAccentColor(p.cls),
+      groupId: "",
+      staggerIdx: 0,
+      groupSize: 1,
+    };
+  });
+
+  // Group nearby anchor dots (within 16px) so hovering one fans out the whole co-located group
+  const calloutItems = items.filter((it) => !it.isPlayer && it.p._callout);
+  const groups = [];
+  for (const it of calloutItems) {
+    let targetGroup = null;
+    for (const g of groups) {
+      if (Math.hypot(it.ax - g.cx, it.ay - g.cy) <= 16) {
+        targetGroup = g;
+        break;
+      }
+    }
+    if (!targetGroup) {
+      groups.push({ cx: it.ax, cy: it.ay, members: [it] });
+    } else {
+      targetGroup.members.push(it);
+      const n = targetGroup.members.length;
+      targetGroup.cx = (targetGroup.cx * (n - 1) + it.ax) / n;
+      targetGroup.cy = (targetGroup.cy * (n - 1) + it.ay) / n;
+    }
+  }
+
+  groups.forEach((g, gi) => {
+    const groupId = `g${gi}`;
+    const size = g.members.length;
+    g.members.forEach((it, si) => {
+      it.p._callout.groupId = groupId;
+      it.p._callout.staggerIdx = si;
+      it.p._callout.groupSize = size;
+    });
+  });
+}
+
 function renderMapPins() {
   const pinsHost = document.getElementById("mapPinsHost");
   if (!state.currentMapData) return;
+  if (typeof cancelHideRevealedGroup === "function") cancelHideRevealedGroup();
+  revealedGroupId = null;
   const { map, questMarkers, lastPin } = state.currentMapData;
   const showPmcExtracts = document.getElementById("layerExtractsPmc")?.checked ?? true;
   const showScavExtracts = document.getElementById("layerExtractsScav")?.checked ?? true;
@@ -639,6 +971,8 @@ function renderMapPins() {
       const factionLabel = isScavOnly ? t("map_extract_scav") : (isShared ? t("map_extract_shared") : t("map_extract_pmc"));
       const badgeCls = isScavOnly ? "blue" : (isShared ? "amber" : "green");
       const titleCol = isScavOnly ? "#38bdf8" : (isShared ? "#2dd4bf" : "#4ade80");
+      const reqTag = ex.requirement || (ex.switch ? t("map_extract_switch") : "");
+      const reqDesc = ex.description || (ex.switch ? t("map_extract_switch") : t("map_extract_no_cond"));
       const tooltipHtml = `
         <div class="map-tooltip-header">
           <div class="map-tooltip-title" style="color:${titleCol};">${esc(ex.name)}</div>
@@ -646,7 +980,8 @@ function renderMapPins() {
         </div>
         <div class="map-tooltip-body">
           <div>${esc(t("map_extract_label"))} <b>${esc(factionLabel)}</b></div>
-          ${ex.switch ? `<div style="color:var(--accent-bright);margin-top:3px;">${esc(t("map_extract_switch"))}</div>` : ""}
+          ${reqTag ? `<div style="margin-top:4px;"><span class="badge amber" style="font-size:10px;">${esc(reqTag)}</span></div>` : ""}
+          <div class="muted" style="font-size:11px;margin-top:4px;line-height:1.35;">${esc(reqDesc)}</div>
         </div>
         <div class="map-tooltip-footer">
           <span>${esc(t("map_extract_foot"))}</span>
@@ -658,14 +993,16 @@ function renderMapPins() {
             <div class="map-popover-title" style="color:${titleCol};">${esc(ex.name)}</div>
             <div class="map-popover-meta">
               <span class="badge ${badgeCls}" style="font-size:10px;">${esc(factionLabel)}</span>
-              <span>${esc(t("map_extract_foot"))}</span>
+              ${reqTag ? `<span class="badge amber" style="font-size:10px;">${esc(reqTag)}</span>` : ""}
             </div>
           </div>
           <button type="button" class="map-popover-close" onclick="closeMapPinPopover()" aria-label="Close">✕</button>
         </div>
         <div class="map-popover-body">
           <div>${esc(t("map_faction_prefix"))} <b>${esc(factionLabel)}</b></div>
-          ${ex.switch ? `<div style="color:var(--accent-bright);">${esc(t("map_extract_switch"))}</div>` : `<div class="muted">${esc(t("map_extract_no_cond"))}</div>`}
+          <div style="color:${reqTag ? "var(--text)" : "var(--text-muted)"};font-size:12px;line-height:1.45;">
+            ${reqTag ? `<b>${esc(t("map_extract_req"))}</b> ` : ""}${esc(reqDesc)}
+          </div>
         </div>
       `;
       addPin(ex.uv, cls, ex.name, detailHtml, null, tooltipHtml);
@@ -715,7 +1052,10 @@ function renderMapPins() {
   if (showQuests || showCompletedQuests || showAllQuests) {
     const hasSelection = state.selectedMapTaskIds && state.selectedMapTaskIds.size > 0;
     const taskLookup = new Map((state.currentMapData?.activeMapTasks || []).map((t) => [t.taskId, t]));
+    const visibleQuests = [];
+
     (questMarkers || []).forEach((qm) => {
+      if (!qm.uv) return;
       const isActive = qm.status === "active" || qm.status === "available";
       const isCompleted = qm.status === "completed";
       const isLocked = qm.status === "locked" || qm.status === "failed";
@@ -727,65 +1067,177 @@ function renderMapPins() {
         if (isLocked && !showAllQuests) return;
         if (!isActive && !isCompleted && !isLocked && !showAllQuests) return;
       }
+      if (hasSelection && !state.selectedMapTaskIds.has(qm.taskId)) return;
+      visibleQuests.push(qm);
+    });
 
-      if (hasSelection && !state.selectedMapTaskIds.has(qm.taskId)) {
+    // Cluster overlapping quest markers within 0.008 UV radius (only when >= 4)
+    const clusters = [];
+    for (let i = 0; i < visibleQuests.length; i++) {
+      const qm = visibleQuests[i];
+      let target = null;
+      for (let j = 0; j < clusters.length; j++) {
+        const cl = clusters[j];
+        if (Math.hypot(qm.uv[0] - cl.uv[0], qm.uv[1] - cl.uv[1]) < 0.008) {
+          target = cl;
+          break;
+        }
+      }
+      if (!target) {
+        clusters.push({ uv: [qm.uv[0], qm.uv[1]], items: [qm] });
+      } else {
+        target.items.push(qm);
+        const n = target.items.length;
+        target.uv = [
+          (target.uv[0] * (n - 1) + qm.uv[0]) / n,
+          (target.uv[1] * (n - 1) + qm.uv[1]) / n,
+        ];
+      }
+    }
+
+    clusters.forEach((cl) => {
+      const items = cl.items;
+      if (items.length < 4) {
+        items.forEach((qm) => {
+        const isActive = qm.status === "active" || qm.status === "available";
+        const isCompleted = qm.status === "completed";
+        const isLocked = qm.status === "locked" || qm.status === "failed";
+        const isSelected = hasSelection && state.selectedMapTaskIds.has(qm.taskId);
+        let cls = "pin-quest";
+        if (isCompleted) cls = "pin-quest-completed";
+        else if (isLocked) cls = "pin-quest-other";
+        if (isSelected) cls += " is-highlighted";
+
+        const itemsText = (qm.neededItems || []).map((it) => `${esc(it.name)}${it.count > 1 ? ` ×${it.count}` : ""}`).join(", ");
+        const stTxt = getTreeStatusLabel(qm.status);
+        const stBadgeColor = isCompleted ? "green" : (isActive ? (qm.status === "active" ? "green" : "blue") : "");
+        const tooltipTitleColor = isCompleted ? "#34d399" : (isActive ? "#c084fc" : "#a1a1aa");
+
+        const tooltipHtml = `
+          <div class="map-tooltip-header">
+            <div>
+              <div class="map-tooltip-title" style="color:${tooltipTitleColor};">${esc(qm.taskName)}${isCompleted ? ` (${t("status_completed")})` : ""}</div>
+              <div class="muted" style="font-size:11px;">${esc(t("map_trader_prefix"))} ${esc(qm.traderName || "—")}</div>
+            </div>
+            <div style="display:flex;gap:4px;">
+              ${qm.kappaRequired ? `<span class="badge amber" style="font-size:10px;">${esc(t("badge_kappa"))}</span>` : ""}
+              <span class="badge ${stBadgeColor}" style="font-size:10px;">${esc(stTxt)}</span>
+            </div>
+          </div>
+          <div class="map-tooltip-body">
+            <div style="margin-bottom:3px;"><b>${esc(t("map_goal_prefix"))}</b> ${esc(qm.description || t("map_goal_default"))}</div>
+            ${itemsText ? `<div style="color:var(--accent-bright);font-size:11px;margin-top:4px;"><b>${esc(t("map_need_here"))}</b> ${itemsText}</div>` : ""}
+          </div>
+          <div class="map-tooltip-footer">
+            <span>${esc(t("map_quest_foot_l"))}</span>
+            <span style="color:var(--accent-bright);font-weight:600;">${esc(t("map_quest_foot_r"))}</span>
+          </div>
+        `;
+
+        const fullTask = taskLookup.get(qm.taskId) || {
+          taskId: qm.taskId,
+          taskName: qm.taskName,
+          traderName: qm.traderName,
+          status: qm.status,
+          kappaRequired: qm.kappaRequired,
+          lightkeeperRequired: qm.lightkeeperRequired,
+          neededKeys: [],
+          points: [],
+        };
+        const detailHtml = buildQuestPopoverHtml(fullTask, qm);
+
+        addPin(
+          cl.uv,
+          cls,
+          `${esc(qm.taskName)}${isCompleted ? " ✓" : ""}`,
+          detailHtml,
+          qm.taskId,
+          tooltipHtml
+        );
+        });
         return;
       }
-      const isSelected = hasSelection && state.selectedMapTaskIds.has(qm.taskId);
-      let cls = "pin-quest";
-      if (isCompleted) {
-        cls = "pin-quest-completed";
-      } else if (isLocked) {
-        cls = "pin-quest-other";
-      }
-      if (isSelected) cls += " is-highlighted";
 
-      const itemsText = (qm.neededItems || []).map((it) => `${esc(it.name)}${it.count > 1 ? ` ×${it.count}` : ""}`).join(", ");
-      const stTxt = getTreeStatusLabel(qm.status);
-      const stBadgeColor = isCompleted ? "green" : (isActive ? (qm.status === "active" ? "green" : "blue") : "");
-      const tooltipTitleColor = isCompleted ? "#34d399" : (isActive ? "#c084fc" : "#a1a1aa");
+      // Multi-quest cluster pin
+      const anyActive = items.some((x) => x.status === "active" || x.status === "available");
+      const allCompleted = items.every((x) => x.status === "completed");
+      const anySelected = hasSelection && items.some((x) => state.selectedMapTaskIds.has(x.taskId));
+      let cls = anyActive ? "pin-quest pin-quest-cluster" : (allCompleted ? "pin-quest-completed pin-quest-cluster" : "pin-quest-other pin-quest-cluster");
+      if (anySelected) cls += " is-highlighted";
+
+      const lead = items.find((x) => x.status === "active" || x.status === "available") || items[0];
+      const pinLabel = `${esc(lead.taskName)} <span class="pin-cluster-cnt">+${items.length - 1}</span>`;
+
+      const tooltipRows = items.map((qm) => {
+        const isAct = qm.status === "active" || qm.status === "available";
+        const isComp = qm.status === "completed";
+        const stCol = isComp ? "#34d399" : (isAct ? "#c084fc" : "#a1a1aa");
+        const badgeCol = isComp ? "green" : (isAct ? (qm.status === "active" ? "green" : "blue") : "");
+        return `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);">
+            <span style="color:${stCol};font-weight:600;">${esc(qm.taskName)}</span>
+            <span class="badge ${badgeCol}" style="font-size:9.5px;flex-shrink:0;">${esc(getTreeStatusLabel(qm.status))}</span>
+          </div>
+        `;
+      }).join("");
 
       const tooltipHtml = `
         <div class="map-tooltip-header">
-          <div>
-            <div class="map-tooltip-title" style="color:${tooltipTitleColor};">${esc(qm.taskName)}${isCompleted ? ` (${t("status_completed")})` : ""}</div>
-            <div class="muted" style="font-size:11px;">${esc(t("map_trader_prefix"))} ${esc(qm.traderName || "—")}</div>
-          </div>
-          <div style="display:flex;gap:4px;">
-            ${qm.kappaRequired ? `<span class="badge amber" style="font-size:10px;">${esc(t("badge_kappa"))}</span>` : ""}
-            <span class="badge ${stBadgeColor}" style="font-size:10px;">${esc(stTxt)}</span>
-          </div>
+          <div class="map-tooltip-title" style="color:var(--accent-bright);">${esc(t("map_cluster_title", { n: items.length }))}</div>
         </div>
-        <div class="map-tooltip-body">
-          <div style="margin-bottom:3px;"><b>${esc(t("map_goal_prefix"))}</b> ${esc(qm.description || t("map_goal_default"))}</div>
-          ${itemsText ? `<div style="color:var(--accent-bright);font-size:11px;margin-top:4px;"><b>${esc(t("map_need_here"))}</b> ${itemsText}</div>` : ""}
-        </div>
+        <div class="map-tooltip-body">${tooltipRows}</div>
         <div class="map-tooltip-footer">
-          <span>${esc(t("map_quest_foot_l"))}</span>
-          <span style="color:var(--accent-bright);font-weight:600;">${esc(t("map_quest_foot_r"))}</span>
+          <span style="color:var(--accent-bright);font-weight:600;">${esc(t("map_cluster_foot"))}</span>
         </div>
       `;
 
-      const fullTask = taskLookup.get(qm.taskId) || {
-        taskId: qm.taskId,
-        taskName: qm.taskName,
-        traderName: qm.traderName,
-        status: qm.status,
-        kappaRequired: qm.kappaRequired,
-        lightkeeperRequired: qm.lightkeeperRequired,
-        neededKeys: [],
-        points: [],
-      };
-      const detailHtml = buildQuestPopoverHtml(fullTask, qm);
+      const clusterCards = items.map((qm) => {
+        const fullTask = taskLookup.get(qm.taskId) || {
+          taskId: qm.taskId,
+          taskName: qm.taskName,
+          traderName: qm.traderName,
+          status: qm.status,
+          kappaRequired: qm.kappaRequired,
+          lightkeeperRequired: qm.lightkeeperRequired,
+          neededKeys: [],
+          points: [],
+        };
+        const isComp = qm.status === "completed";
+        const isAct = qm.status === "active" || qm.status === "available";
+        const stColor = isComp ? "green" : (isAct ? "blue" : "");
+        const itemsTags = (qm.neededItems || []).map((it) => `<span class="badge amber" style="font-size:10px;">${esc(it.name)}${it.count > 1 ? ` ×${it.count}` : ""}</span>`).join(" ");
+        const keysTags = (fullTask.neededKeys || []).map((k) => `<span class="badge" style="font-size:10px;">🔑 ${esc(k.shortName || k.name)}</span>`).join(" ");
+        return `
+          <div class="cluster-popover-item">
+            <div class="cluster-popover-item-head">
+              <div style="min-width:0;">
+                <div style="font-weight:700;font-size:12.5px;color:var(--text);">${esc(qm.taskName)}</div>
+                <div class="muted" style="font-size:11px;">${esc(qm.traderName || "—")}</div>
+              </div>
+              <span class="badge ${stColor}" style="font-size:10px;flex-shrink:0;">${esc(getTreeStatusLabel(qm.status))}</span>
+            </div>
+            <div style="font-size:11.5px;line-height:1.38;color:var(--text-muted);">${esc(qm.description || t("map_goal_default"))}</div>
+            ${(itemsTags || keysTags) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;">${itemsTags}${keysTags}</div>` : ""}
+            <div class="cluster-popover-item-actions">
+              <button type="button" class="btn-guide compact" onclick="openQuestGuide('${esc(qm.taskId)}')">${GUIDE_BOOK_ICO}${esc(t("btn_guide"))}</button>
+              <button type="button" class="btn btn-ghost" style="padding:3px 7px;font-size:11px;" onclick="setMapTaskStatus('${esc(qm.taskId)}','active')">${esc(t("status_active"))}</button>
+              <button type="button" class="btn btn-primary" style="padding:3px 7px;font-size:11px;" onclick="setMapTaskStatus('${esc(qm.taskId)}','completed')">${esc(t("status_completed"))}</button>
+            </div>
+          </div>
+        `;
+      }).join("");
 
-      addPin(
-        qm.uv,
-        cls,
-        `${esc(qm.taskName)}${isCompleted ? " ✓" : ""}`,
-        detailHtml,
-        qm.taskId,
-        tooltipHtml
-      );
+      const detailHtml = `
+        <div class="map-popover-head">
+          <div style="min-width:0;">
+            <div class="map-popover-title" style="color:var(--accent-bright);">${esc(t("map_cluster_title", { n: items.length }))}</div>
+          </div>
+          <button type="button" class="map-popover-close" onclick="closeMapPinPopover()" aria-label="Close">✕</button>
+        </div>
+        <div class="cluster-popover-list">${clusterCards}</div>
+      `;
+
+      addPin(cl.uv, cls, pinLabel, detailHtml, lead.taskId, tooltipHtml);
     });
   }
   if (showPin && lastPin && lastPin.uv && (!lastPin.mapId || lastPin.mapId === map.id)) {
@@ -814,7 +1266,6 @@ function renderMapPins() {
     addPin(lastPin.uv, "pin-player", `➤`, detailHtml, null, tooltipHtml);
   }
   if (showBosses) {
-    const overlapBuckets = new Map();
     const seenBossSpots = new Set();
     (map.bosses || []).forEach((b) => {
       if (b.isBoss === false) return;
@@ -823,20 +1274,6 @@ function renderMapPins() {
         const spotKey = `${b.name}|${sl.name}`;
         if (seenBossSpots.has(spotKey)) return;
         seenBossSpots.add(spotKey);
-
-        const bucketKey = `${Math.round(sl.uv[0] * 40)}:${Math.round(sl.uv[1] * 40)}`;
-        const stackIdx = overlapBuckets.get(bucketKey) || 0;
-        overlapBuckets.set(bucketKey, stackIdx + 1);
-
-        let uv = sl.uv;
-        if (stackIdx > 0) {
-          const ang = stackIdx * 2.15;
-          const r = 0.014 + Math.floor(stackIdx / 3) * 0.009;
-          uv = [
-            Math.max(0.02, Math.min(0.98, sl.uv[0] + Math.cos(ang) * r)),
-            Math.max(0.02, Math.min(0.98, sl.uv[1] + Math.sin(ang) * r * 1.25)),
-          ];
-        }
 
         const lbl = `${b.name} (${b.chance}%)`;
         const zoneTxt = sl.name || (state.lang === "en" ? "Spawn zone" : "Зона спавна");
@@ -871,7 +1308,7 @@ function renderMapPins() {
           </div>
         `;
         addPin(
-          uv,
+          sl.uv,
           "pin-boss",
           lbl,
           detailHtml,
@@ -882,12 +1319,39 @@ function renderMapPins() {
     });
   }
 
+  const svgHost = document.getElementById("mapSvgHost");
+  const satCanvas = document.getElementById("mapSatCanvas");
+  const rawH = Math.max(svgHost?.offsetHeight || 0, satCanvas?.offsetHeight || 0);
+  const mapW = 1000;
+  const mapH = rawH > 100 ? rawH : 620;
+  layoutCalloutPins(pins, mapW, mapH);
+
   const curFloor = state.activeMapFloor || "all";
-  pinsHost.innerHTML = pins.map((p, idx) => {
+  const leaderLines = [];
+  const pinHtml = [];
+
+  pins.forEach((p, idx) => {
     const dim = curFloor !== "all" && p.floorId && p.floorId !== curFloor ? " is-dimmed-floor" : "";
     const sel = state.selectedLockPinId && p.lockId && p.lockId === state.selectedLockPinId ? " pin-selected" : "";
-    return `<div class="map-pin ${p.cls}${dim}${sel}" style="left:${p.left}%;top:${p.top}%;" data-pin-idx="${idx}" data-floor-id="${esc(p.floorId || "")}">${p.label}</div>`;
-  }).join("");
+    const floorAttr = esc(p.floorId || "");
+
+    if (!p._callout) {
+      pinHtml.push(`<div class="map-pin ${p.cls}${dim}${sel}" style="left:${p.left}%;top:${p.top}%;" data-pin-idx="${idx}" data-floor-id="${floorAttr}">${p.label}</div>`);
+      return;
+    }
+
+    const c = p._callout;
+    const isLockCls = (p.cls || "").includes("pin-lock") ? " pin-lock" : "";
+    const sideCls = c.isRight ? "callout-right" : "callout-left";
+    const groupCls = c.groupSize > 1 ? " has-group" : "";
+    const delayMs = Math.min(112, c.staggerIdx * 28);
+    leaderLines.push(`<polyline class="map-leader-hit" data-pin-idx="${idx}" data-reveal-group="${c.groupId}" points="${c.pointsStr}" />`);
+    leaderLines.push(`<polyline class="map-leader${isLockCls}${dim}" data-pin-idx="${idx}" data-reveal-group="${c.groupId}" data-floor-id="${floorAttr}" points="${c.pointsStr}" stroke="${c.accent}" style="--leader-len:${c.leaderLen};--reveal-delay:${delayMs}ms;" />`);
+    pinHtml.push(`<div class="map-pin-anchor${isLockCls}${dim}${groupCls}" style="left:${p.left}%;top:${p.top}%;background:${c.accent};" data-pin-idx="${idx}" data-reveal-group="${c.groupId}" data-floor-id="${floorAttr}"></div>`);
+    pinHtml.push(`<div class="map-pin map-pin-callout ${sideCls} ${p.cls}${dim}${sel}" style="left:${c.boxLeftPct.toFixed(3)}%;top:${c.boxTopPct.toFixed(3)}%;--reveal-delay:${delayMs}ms;" data-pin-idx="${idx}" data-reveal-group="${c.groupId}" data-floor-id="${floorAttr}">${p.label}</div>`);
+  });
+
+  pinsHost.innerHTML = `<svg class="map-leaders-svg" viewBox="0 0 ${mapW} ${mapH}" preserveAspectRatio="none">${leaderLines.join("")}</svg>${pinHtml.join("")}`;
   pinsHost._pins = pins;
 }
 
@@ -944,6 +1408,13 @@ window.openMapPinPopover = function openMapPinPopover(uv, html, pinEl = null) {
   if (!pop) return;
   activeMapPopover.uv = uv || [0.5, 0.5];
   activeMapPopover.pinEl = pinEl || null;
+  const pinsHost = document.getElementById("mapPinsHost");
+  if (pinsHost) {
+    pinsHost.querySelectorAll(".is-pinned").forEach((n) => n.classList.remove("is-pinned"));
+    if (pinEl?.dataset?.pinIdx !== undefined) {
+      pinsHost.querySelectorAll(`[data-pin-idx="${pinEl.dataset.pinIdx}"]`).forEach((n) => n.classList.add("is-pinned"));
+    }
+  }
   hideMapTooltip();
   pop.innerHTML = html;
   pop.dataset.open = "true";
@@ -961,23 +1432,27 @@ window.closeMapPinPopover = function closeMapPinPopover() {
     pop.setAttribute("aria-hidden", "true");
   }
   document.querySelectorAll("#mapPinsHost .map-pin.pin-selected").forEach((n) => n.classList.remove("pin-selected"));
+  document.querySelectorAll("#mapPinsHost .is-pinned").forEach((n) => n.classList.remove("is-pinned"));
   state.selectedLockPinId = null;
 };
 
 window.addEventListener("resize", repositionMapPopover);
 
 document.getElementById("mapPinsHost").addEventListener("click", (e) => {
-  const el = e.target.closest(".map-pin");
+  const el = e.target.closest(".map-pin, .map-pin-anchor, .map-leader-hit");
   if (!el) return;
   e.stopPropagation();
-  const pins = document.getElementById("mapPinsHost")._pins || [];
-  const p = pins[Number(el.dataset.pinIdx)];
+  const pinIdx = Number(el.dataset.pinIdx);
+  const pinsHost = document.getElementById("mapPinsHost");
+  const pins = pinsHost._pins || [];
+  const p = pins[pinIdx];
   if (!p) return;
+  const labelEl = pinsHost.querySelector(`.map-pin[data-pin-idx="${pinIdx}"]`) || el;
   document.querySelectorAll("#mapPinsHost .map-pin.pin-selected").forEach((n) => n.classList.remove("pin-selected"));
-  el.classList.add("pin-selected");
+  labelEl.classList.add("pin-selected");
   state.selectedLockPinId = p.lockId || null;
 
-  openMapPinPopover(p.uv, p.detailHtml, el);
+  openMapPinPopover(p.uv, p.detailHtml, labelEl);
   if (p.floorId) {
     setActiveMapFloor(p.floorId);
   }
@@ -994,6 +1469,45 @@ const mapViewportEl = document.getElementById("mapViewport");
 const mapTooltipEl = document.getElementById("mapTooltip");
 let hoveredMapPinIdx = null;
 let tooltipWarmUntil = 0;
+let revealedGroupId = null;
+let revealCloseTimer = null;
+
+function cancelHideRevealedGroup() {
+  if (revealCloseTimer !== null) {
+    clearTimeout(revealCloseTimer);
+    revealCloseTimer = null;
+  }
+}
+
+function setRevealedGroup(groupId) {
+  cancelHideRevealedGroup();
+  if (groupId === revealedGroupId) return;
+  const pinsHost = document.getElementById("mapPinsHost");
+  if (pinsHost) {
+    pinsHost.querySelectorAll(".is-revealed").forEach((node) => node.classList.remove("is-revealed"));
+    if (groupId) {
+      pinsHost.querySelectorAll(`[data-reveal-group="${groupId}"]`).forEach((node) => node.classList.add("is-revealed"));
+    }
+  }
+  revealedGroupId = groupId || null;
+}
+
+function scheduleHideRevealedGroup() {
+  if (revealCloseTimer !== null) return;
+  revealCloseTimer = setTimeout(() => {
+    revealCloseTimer = null;
+    setRevealedGroup(null);
+    setHoveredCallout(null);
+  }, 260);
+}
+
+function setHoveredCallout(idx) {
+  const pinsHost = document.getElementById("mapPinsHost");
+  if (!pinsHost) return;
+  pinsHost.querySelectorAll(".is-hovered").forEach((node) => node.classList.remove("is-hovered"));
+  if (idx === null || idx === undefined || typeof idx !== "number") return;
+  pinsHost.querySelectorAll(`[data-pin-idx="${idx}"]`).forEach((node) => node.classList.add("is-hovered"));
+}
 
 function showMapTooltip(html, e) {
   if (!mapTooltipEl) return;
@@ -1010,18 +1524,33 @@ if (mapViewportEl && mapTooltipEl) {
   mapViewportEl.addEventListener("mousemove", (e) => {
     if (dragging || e.target.closest(".map-popover")) {
       hideMapTooltip();
+      scheduleHideRevealedGroup();
       return;
     }
-    const pinEl = e.target.closest(".map-pin");
-    if (pinEl) {
-      if (activeMapPopover.pinEl && pinEl === activeMapPopover.pinEl) {
-        hideMapTooltip();
+    const hitEl = e.target.closest(".map-pin, .map-pin-anchor, .map-leader-hit");
+    if (hitEl) {
+      cancelHideRevealedGroup();
+      const idx = Number(hitEl.dataset.pinIdx);
+      const groupId = hitEl.dataset.revealGroup || null;
+      if (groupId) setRevealedGroup(groupId);
+
+      const pinsHost = document.getElementById("mapPinsHost");
+      const labelEl = pinsHost?.querySelector(`.map-pin[data-pin-idx="${idx}"]`) || hitEl;
+      const pins = pinsHost?._pins || [];
+      const p = pins[idx];
+
+      setHoveredCallout(idx);
+
+      if (activeMapPopover.pinEl && (hitEl === activeMapPopover.pinEl || labelEl === activeMapPopover.pinEl)) {
+        hideMapTooltip(true);
         return;
       }
-      const idx = Number(pinEl.dataset.pinIdx);
-      const pins = document.getElementById("mapPinsHost")?._pins || [];
-      const p = pins[idx];
-      if (p && p.tooltipHtml) {
+
+      const isLabel = hitEl.classList.contains("map-pin");
+      const isDirectPin = isLabel && !hitEl.classList.contains("map-pin-callout");
+      const isRevealedLabel = isLabel && hitEl.classList.contains("map-pin-callout");
+
+      if (p && p.tooltipHtml && (isDirectPin || isRevealedLabel)) {
         if (hoveredMapPinIdx !== idx) {
           hoveredMapPinIdx = idx;
           showMapTooltip(p.tooltipHtml, e);
@@ -1030,16 +1559,23 @@ if (mapViewportEl && mapTooltipEl) {
         }
         return;
       }
+
+      // Hovering anchor dot or leader corridor: keep callout revealed, hide stale floating tooltip
+      hideMapTooltip(true);
+      return;
     }
+
+    scheduleHideRevealedGroup();
 
     // Check SVG map elements with titles or meaningful labels
     const svgTarget = e.target.closest("g[id], text, path[title]");
-    if (svgTarget && !pinEl) {
+    if (svgTarget) {
       const rawTitle = svgTarget.getAttribute("title") || svgTarget.id || "";
       if (rawTitle && !rawTitle.startsWith("path") && !rawTitle.startsWith("svg_") && rawTitle.length > 2 && isNaN(Number(rawTitle))) {
         const cleanTitle = rawTitle.replace(/[-_]/g, " ");
         if (hoveredMapPinIdx !== "svg-" + rawTitle) {
           hoveredMapPinIdx = "svg-" + rawTitle;
+          setHoveredCallout(null);
           showMapTooltip(`
             <div class="map-tooltip-header">
               <div class="map-tooltip-title">${esc(cleanTitle)}</div>
@@ -1058,12 +1594,14 @@ if (mapViewportEl && mapTooltipEl) {
 
   mapViewportEl.addEventListener("mouseleave", () => {
     hideMapTooltip();
+    scheduleHideRevealedGroup();
   });
 }
 
-function hideMapTooltip() {
+function hideMapTooltip(keepCalloutHover = false) {
   if (hoveredMapPinIdx !== null) {
     hoveredMapPinIdx = null;
+    if (!keepCalloutHover) setHoveredCallout(null);
     if (mapTooltipEl && mapTooltipEl.dataset.open === "true") {
       tooltipWarmUntil = Date.now() + 300;
       mapTooltipEl.dataset.instant = "false";
